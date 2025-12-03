@@ -30,6 +30,8 @@ class Client(db.Model):
     last_checked_at = db.Column(db.DateTime)
     last_note = db.Column(db.Text)
     last_subject = db.Column(db.String(512))
+    last_statuses = db.Column(db.Text)
+    last_email_count = db.Column(db.Integer, default=0, nullable=False)
 
     def status_label(self) -> str:
         return self.last_status or STATUS_MISSING
