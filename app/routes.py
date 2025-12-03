@@ -16,7 +16,7 @@ from flask import (
 
 from . import db
 from .email_service import run_email_checks
-from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, User, add_log
+from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
 
 
 bp = Blueprint("main", __name__)
@@ -75,11 +75,21 @@ def index():
 def new_client():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
-        subject = request.form.get("expected_subject", "").strip()
-        if not name or not subject:
-            flash("Merci de renseigner un nom et un objet attendu.", "error")
+        subject_ok = request.form.get("expected_subject_ok", "").strip()
+        subject_warning = request.form.get("expected_subject_warning", "").strip()
+        subject_failed = request.form.get("expected_subject_failed", "").strip()
+
+        if not name or not subject_ok or not subject_warning or not subject_failed:
+            flash("Merci de renseigner un nom et les trois objets attendus.", "error")
         else:
-            client = Client(name=name, expected_subject=subject, last_status="Non reçu")
+            client = Client(
+                name=name,
+                expected_subject=subject_ok,
+                expected_subject_ok=subject_ok,
+                expected_subject_warning=subject_warning,
+                expected_subject_failed=subject_failed,
+                last_status=STATUS_MISSING,
+            )
             db.session.add(client)
             db.session.commit()
             add_log(f"Client '{name}' créé par {g.user.username}.")
@@ -94,7 +104,14 @@ def edit_client(client_id: int):
     client = Client.query.get_or_404(client_id)
     if request.method == "POST":
         client.name = request.form.get("name", "").strip()
-        client.expected_subject = request.form.get("expected_subject", "").strip()
+        subject_ok = request.form.get("expected_subject_ok", "").strip()
+        subject_warning = request.form.get("expected_subject_warning", "").strip()
+        subject_failed = request.form.get("expected_subject_failed", "").strip()
+
+        client.expected_subject = subject_ok
+        client.expected_subject_ok = subject_ok
+        client.expected_subject_warning = subject_warning
+        client.expected_subject_failed = subject_failed
         db.session.commit()
         add_log(f"Client '{client.name}' mis à jour par {g.user.username}.")
         flash("Client mis à jour.", "success")
