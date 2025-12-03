@@ -192,10 +192,15 @@ def test_smtp_connection():
 
     server = None
     try:
-        if config.use_ssl:
+        use_ssl_direct = config.use_ssl and config.smtp_port == 465
+        if use_ssl_direct:
             server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=10)
         else:
             server = smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10)
+            if config.use_ssl:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
         server.login(config.smtp_username, config.smtp_password)
         server.noop()
         message = "Test SMTP réussi."
