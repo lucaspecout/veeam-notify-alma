@@ -13,6 +13,18 @@ docker build -t veeam-notify .
 docker run -p 5000:5000 veeam-notify
 ```
 
+### Avec Docker Compose
+Un fichier `docker-compose.yml` est fourni pour lancer l'application avec un volume persistant pour la base SQLite et un fuseau horaire configuré.
+
+```bash
+docker compose up --build
+```
+
+Variables utiles (avec valeurs par défaut si non fournies) :
+- `SECRET_KEY` : clé secrète Flask (défaut : `change-me`).
+- `DATABASE_URL` : URL de la base de données (défaut : `sqlite:////data/app.db`).
+- `TZ` : fuseau horaire (défaut : `Europe/Paris`).
+
 L'interface est disponible sur http://localhost:5000.
 
 ## Utilisation
