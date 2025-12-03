@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Veeam Notify</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+    <div class="container">
+        <h1>Suivi des notifications Veeam</h1>
+        <nav>
+            <a href="{{ url_for('main.index') }}">Tableau de bord</a>
+            <a href="{{ url_for('main.settings') }}">Paramètres</a>
+        </nav>
+    </div>
+</header>
+<main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <ul class="flash-messages">
+                {% for category, message in messages %}
+                    <li class="flash {{ category }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+</main>
+<footer>
+    <div class="container">
+        <small>Contrôle automatique des notifications e-mail Veeam - 9h chaque jour</small>
+    </div>
+</footer>
+</body>
+</html>

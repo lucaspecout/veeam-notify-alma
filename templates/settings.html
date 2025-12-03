@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Paramètres de connexion</h2>
+<form method="post" class="card grid">
+    <div>
+        <h3>IMAP</h3>
+        <label for="imap_host">Serveur IMAP</label>
+        <input type="text" id="imap_host" name="imap_host" value="{{ config.imap_host or '' }}" required>
+
+        <label for="imap_port">Port IMAP</label>
+        <input type="number" id="imap_port" name="imap_port" value="{{ config.imap_port or 993 }}">
+
+        <label>
+            <input type="checkbox" name="use_ssl" {% if config.use_ssl %}checked{% endif %}> Utiliser SSL
+        </label>
+
+        <label for="imap_username">Utilisateur IMAP</label>
+        <input type="text" id="imap_username" name="imap_username" value="{{ config.imap_username or '' }}" required>
+
+        <label for="imap_password">Mot de passe IMAP</label>
+        <input type="password" id="imap_password" name="imap_password" value="{{ config.imap_password or '' }}" required>
+    </div>
+    <div>
+        <h3>SMTP (optionnel)</h3>
+        <label for="smtp_host">Serveur SMTP</label>
+        <input type="text" id="smtp_host" name="smtp_host" value="{{ config.smtp_host or '' }}">
+
+        <label for="smtp_port">Port SMTP</label>
+        <input type="number" id="smtp_port" name="smtp_port" value="{{ config.smtp_port or '' }}">
+
+        <label for="smtp_username">Utilisateur SMTP</label>
+        <input type="text" id="smtp_username" name="smtp_username" value="{{ config.smtp_username or '' }}">
+
+        <label for="smtp_password">Mot de passe SMTP</label>
+        <input type="password" id="smtp_password" name="smtp_password" value="{{ config.smtp_password or '' }}">
+    </div>
+    <div class="form-actions full-width">
+        <button type="submit" class="button">Enregistrer</button>
+        <a class="button secondary" href="{{ url_for('main.index') }}">Retour</a>
+    </div>
+</form>
+{% endblock %}
