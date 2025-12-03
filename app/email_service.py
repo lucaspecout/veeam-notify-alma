@@ -2,6 +2,7 @@ import email
 import os
 import smtplib
 from datetime import datetime, timedelta
+import html
 import imaplib
 from email.header import decode_header
 from email.message import EmailMessage
@@ -176,6 +177,99 @@ def build_status_report(clients: list[Client], tz: ZoneInfo) -> str:
     return "\n".join(lines)
 
 
+def _status_badge(status: str) -> tuple[str, str]:
+    palette = {
+        STATUS_OK: ("#16a34a", "#e7f7ec"),
+        STATUS_WARNING: ("#f59e0b", "#fff7e6"),
+        STATUS_FAILED: ("#dc2626", "#fdecec"),
+        STATUS_MISSING: ("#6b7280", "#f3f4f6"),
+    }
+    return palette.get(status, ("#0ea5e9", "#e0f2fe"))
+
+
+def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
+    now = datetime.now(tz=tz)
+    header_date = now.strftime("%d/%m/%Y %H:%M")
+    rows: list[str] = []
+    for client in clients:
+        fg, bg = _status_badge(client.status_label())
+        checked_at = (
+            client.last_checked_at.strftime("%d/%m/%Y %H:%M")
+            if client.last_checked_at
+            else "Jamais vérifié"
+        )
+        subject = client.last_subject or "—"
+        note = client.last_note or "—"
+        rows.append(
+            """
+            <tr>
+                <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#111827;">{name}</td>
+                <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;">
+                    <span style="display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;color:{fg};background:{bg};border:1px solid {fg}1a;">{status}</span>
+                </td>
+                <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;font-family:'SFMono-Regular',Consolas,monospace;color:#374151;font-size:13px;">{subject}</td>
+                <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;color:#374151;">{checked_at}</td>
+                <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;color:#4b5563;">{note}</td>
+            </tr>
+            """.format(
+                name=html.escape(client.name),
+                status=html.escape(client.status_label()),
+                subject=html.escape(subject),
+                checked_at=html.escape(checked_at),
+                note=html.escape(note),
+                fg=fg,
+                bg=bg,
+            )
+        )
+
+    table_body = "".join(rows) or """
+        <tr>
+            <td colspan="5" style="padding:16px;text-align:center;color:#6b7280;background:#f9fafb;">
+                Aucun client n'a été configuré pour le moment.
+            </td>
+        </tr>
+    """
+
+    return f"""
+    <!doctype html>
+    <html lang=\"fr\">
+    <body style=\"margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Helvetica,Arial,sans-serif;\">
+        <div style=\"max-width:760px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(15,23,42,0.08);\">
+            <div style=\"background:linear-gradient(120deg,#2563eb,#7c3aed);color:#f8fafc;padding:18px 22px;\">
+                <div style=\"font-size:14px;opacity:0.9;letter-spacing:0.3px;\">Rapport Veeam</div>
+                <div style=\"font-size:22px;font-weight:700;margin-top:4px;\">Statut des notifications</div>
+                <div style=\"font-size:13px;opacity:0.85;margin-top:6px;\">Généré le {header_date} ({tz})</div>
+            </div>
+            <div style=\"padding:20px 22px 10px;\">
+                <p style=\"margin:0 0 12px;color:#1f2937;font-size:14px;line-height:1.6;\">
+                    Voici un récapitulatif des derniers statuts reçus pour vos clients.
+                </p>
+            </div>
+            <div style=\"padding:0 22px 22px;\">
+                <table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;\">
+                    <thead>
+                        <tr style=\"background:#f9fafb;border-bottom:1px solid #e5e7eb;\">
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Client</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statut</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Dernier sujet</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Vérifié le</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {table_body}
+                    </tbody>
+                </table>
+            </div>
+            <div style=\"padding:14px 22px 20px;color:#6b7280;font-size:12px;border-top:1px solid #f3f4f6;background:#fbfbff;\">
+                Ce message est généré automatiquement par Veeam Notify. Merci de ne pas y répondre directement.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
 def send_status_report(app=None) -> tuple[bool, str]:
     app = app or current_app._get_current_object()
     with app.app_context():
@@ -202,12 +296,14 @@ def send_status_report(app=None) -> tuple[bool, str]:
 
         clients = Client.query.order_by(Client.name).all()
         body = build_status_report(clients, tz)
+        html_body = build_status_report_html(clients, tz)
 
         msg = EmailMessage()
         msg["Subject"] = f"Rapport Veeam - {datetime.now(tz=tz).strftime('%d/%m/%Y %H:%M')}"
         msg["From"] = config.smtp_username
         msg["To"] = ", ".join(recipients)
         msg.set_content(body)
+        msg.add_alternative(html_body, subtype="html")
 
         server = None
         try:
