@@ -1,9 +1,10 @@
 import email
-import os
-import smtplib
-from datetime import datetime, timedelta
 import html
 import imaplib
+import os
+import re
+import smtplib
+from datetime import datetime, timedelta
 from email.header import decode_header
 from email.message import EmailMessage
 from typing import List
@@ -270,16 +271,20 @@ def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
     """
 
 
+def parse_report_recipients(raw_recipients: str) -> list[str]:
+    return [
+        part.strip()
+        for part in re.split(r"[,;\n]+", raw_recipients)
+        if part.strip()
+    ]
+
+
 def send_status_report(app=None) -> tuple[bool, str]:
     app = app or current_app._get_current_object()
     with app.app_context():
         config = EmailConfig.get_singleton()
         tz = ZoneInfo(os.getenv("TZ", "Europe/Paris"))
-        recipients = [
-            email.strip()
-            for email in (config.report_recipients or "").split(",")
-            if email.strip()
-        ]
+        recipients = parse_report_recipients(config.report_recipients or "")
 
         if not recipients:
             message = "Aucun destinataire configuré pour le rapport."

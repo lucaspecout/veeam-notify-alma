@@ -39,8 +39,8 @@
     <div>
         <h3>Rapports</h3>
         <label for="report_recipients">Destinataires du rapport</label>
-        <input type="text" id="report_recipients" name="report_recipients" value="{{ config.report_recipients or '' }}" placeholder="email1@example.com, email2@example.com">
-        <p class="muted">Séparez plusieurs adresses par des virgules.</p>
+        <textarea id="report_recipients" name="report_recipients" rows="3" placeholder="email1@example.com\nemail2@example.com">{{ config.report_recipients or '' }}</textarea>
+        <p class="muted">Vous pouvez saisir plusieurs adresses, séparées par des virgules, des points-virgules ou des retours à la ligne.</p>
 
         <label>
             <input type="checkbox" name="auto_report_enabled" {% if config.auto_report_enabled %}checked{% endif %}>
