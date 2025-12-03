@@ -1,4 +1,6 @@
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -12,10 +14,18 @@ STATUS_WARNING = "Warning"
 STATUS_CHOICES = [STATUS_OK, STATUS_MISSING, STATUS_FAILED, STATUS_WARNING]
 
 
+def current_time() -> datetime:
+    tz = ZoneInfo(os.getenv("TZ", "Europe/Paris"))
+    return datetime.now(tz=tz)
+
+
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(128), nullable=False)
     expected_subject = db.Column(db.String(512), nullable=False)
+    expected_subject_ok = db.Column(db.String(512))
+    expected_subject_warning = db.Column(db.String(512))
+    expected_subject_failed = db.Column(db.String(512))
     last_status = db.Column(db.String(32), default=STATUS_MISSING, nullable=False)
     last_checked_at = db.Column(db.DateTime)
     last_note = db.Column(db.Text)
@@ -23,6 +33,18 @@ class Client(db.Model):
 
     def status_label(self) -> str:
         return self.last_status or STATUS_MISSING
+
+    @property
+    def subject_ok(self) -> str:
+        return (self.expected_subject_ok or self.expected_subject or "").strip()
+
+    @property
+    def subject_warning(self) -> str:
+        return (self.expected_subject_warning or "").strip()
+
+    @property
+    def subject_failed(self) -> str:
+        return (self.expected_subject_failed or "").strip()
 
 
 class EmailConfig(db.Model):
@@ -36,7 +58,7 @@ class EmailConfig(db.Model):
     smtp_username = db.Column(db.String(256))
     smtp_password = db.Column(db.String(256))
     use_ssl = db.Column(db.Boolean, default=True)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=current_time, onupdate=current_time)
 
     @classmethod
     def get_singleton(cls):
@@ -52,7 +74,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=current_time, nullable=False)
 
     def set_password(self, raw_password: str) -> None:
         self.password_hash = generate_password_hash(raw_password)
@@ -71,7 +93,7 @@ class User(db.Model):
 
 class LogEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=current_time, nullable=False)
     level = db.Column(db.String(16), default="INFO", nullable=False)
     message = db.Column(db.Text, nullable=False)
 

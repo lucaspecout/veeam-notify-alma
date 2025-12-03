@@ -5,8 +5,14 @@
     <label for="name">Nom du client</label>
     <input type="text" id="name" name="name" value="{{ client.name if client else '' }}" required>
 
-    <label for="expected_subject">Objet attendu</label>
-    <input type="text" id="expected_subject" name="expected_subject" value="{{ client.expected_subject if client else '' }}" required>
+    <label for="expected_subject_ok">Objet attendu pour le statut OK</label>
+    <input type="text" id="expected_subject_ok" name="expected_subject_ok" value="{{ client.subject_ok if client else '' }}" required>
+
+    <label for="expected_subject_warning">Objet attendu pour le statut Warning</label>
+    <input type="text" id="expected_subject_warning" name="expected_subject_warning" value="{{ client.subject_warning if client else '' }}" required>
+
+    <label for="expected_subject_failed">Objet attendu pour le statut Failed</label>
+    <input type="text" id="expected_subject_failed" name="expected_subject_failed" value="{{ client.subject_failed if client else '' }}" required>
 
     <div class="form-actions">
         <button type="submit" class="button">Enregistrer</button>

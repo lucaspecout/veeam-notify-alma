@@ -10,7 +10,7 @@
     <thead>
     <tr>
         <th>Client</th>
-        <th>Objet attendu</th>
+        <th>Objets attendus</th>
         <th>Statut</th>
         <th>Dernier sujet reçu</th>
         <th>Dernière vérification</th>
@@ -22,7 +22,11 @@
     {% for client in clients %}
         <tr>
             <td>{{ client.name }}</td>
-            <td class="monospace">{{ client.expected_subject }}</td>
+            <td class="monospace">
+                <div><span class="badge status-ok">OK</span> {{ client.subject_ok }}</div>
+                <div><span class="badge status-warning">Warning</span> {{ client.subject_warning }}</div>
+                <div><span class="badge status-failed">Failed</span> {{ client.subject_failed }}</div>
+            </td>
             <td><span class="badge status-{{ client.last_status | lower | replace(' ', '-') }}">{{ client.last_status }}</span></td>
             <td class="monospace">{{ client.last_subject or '—' }}</td>
             <td>{% if client.last_checked_at %}{{ client.last_checked_at.strftime('%d/%m/%Y %H:%M') }}{% else %}Jamais{% endif %}</td>

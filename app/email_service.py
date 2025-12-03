@@ -31,13 +31,19 @@ def decode_subject(raw_subject: str) -> str:
     return subject
 
 
-def extract_status_from_subject(subject: str) -> str:
-    lowered = subject.lower()
-    if "[failed]" in lowered:
-        return STATUS_FAILED
-    if "[warning]" in lowered:
-        return STATUS_WARNING
-    return STATUS_OK
+def extract_status_from_subject(subject: str, client: Client) -> str | None:
+    subject_lower = subject.lower()
+    expected_pairs = [
+        (STATUS_FAILED, client.subject_failed),
+        (STATUS_WARNING, client.subject_warning),
+        (STATUS_OK, client.subject_ok),
+    ]
+
+    for status, expected in expected_pairs:
+        if expected and expected.lower() in subject_lower:
+            return status
+
+    return None
 
 
 def parse_email_date(date_header: str | None, tz: ZoneInfo) -> datetime | None:
@@ -61,8 +67,9 @@ def find_matching_subject(
     start_time: datetime,
     end_time: datetime,
     tz: ZoneInfo,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     matched_subject = None
+    matched_status = None
     note = None
     for msg_id in reversed(message_ids):
         status, msg_data = mail.fetch(msg_id, "(RFC822)")
@@ -78,10 +85,11 @@ def find_matching_subject(
         if received_at and (received_at < start_time or received_at > end_time):
             continue
         subject = decode_subject(message.get("Subject", ""))
-        if client.expected_subject.lower() in subject.lower():
+        matched_status = extract_status_from_subject(subject, client)
+        if matched_status:
             matched_subject = subject
             break
-    return matched_subject, note
+    return matched_subject, note, matched_status
 
 
 def run_email_checks(app=None):
@@ -118,11 +126,11 @@ def run_email_checks(app=None):
             message_ids = search_data[0].split()
 
             for client in clients:
-                matched_subject, note = find_matching_subject(
+                matched_subject, note, matched_status = find_matching_subject(
                     message_ids, client, mail, start_time, now, tz
                 )
                 if matched_subject:
-                    client.last_status = extract_status_from_subject(matched_subject)
+                    client.last_status = matched_status or STATUS_OK
                     client.last_subject = matched_subject
                     client.last_note = None
                 else:
