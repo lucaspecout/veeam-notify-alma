@@ -39,4 +39,16 @@
         <a class="button secondary" href="{{ url_for('main.index') }}">Retour</a>
     </div>
 </form>
+
+<h3>Tests de connexion</h3>
+<div class="grid">
+    <form method="post" action="{{ url_for('main.test_imap_connection') }}" class="card">
+        <p>Vérifie la connexion au serveur IMAP configuré.</p>
+        <button type="submit" class="button">Tester IMAP</button>
+    </form>
+    <form method="post" action="{{ url_for('main.test_smtp_connection') }}" class="card">
+        <p>Vérifie la connexion au serveur SMTP configuré.</p>
+        <button type="submit" class="button">Tester SMTP</button>
+    </form>
+</div>
 {% endblock %}

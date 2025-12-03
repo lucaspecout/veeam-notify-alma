@@ -1,3 +1,5 @@
+import imaplib
+import smtplib
 from functools import wraps
 
 from flask import (
@@ -129,6 +131,73 @@ def settings():
         flash("Configuration mise à jour.", "success")
         return redirect(url_for("main.settings"))
     return render_template("settings.html", config=config)
+
+
+@bp.route("/settings/test-imap", methods=["POST"])
+@login_required
+def test_imap_connection():
+    config = EmailConfig.get_singleton()
+    if not config.imap_host or not config.imap_username or not config.imap_password:
+        flash("Configuration IMAP incomplète.", "error")
+        return redirect(url_for("main.settings"))
+
+    mail = None
+    try:
+        if config.use_ssl:
+            mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port)
+        else:
+            mail = imaplib.IMAP4(config.imap_host, config.imap_port)
+        mail.login(config.imap_username, config.imap_password)
+        mail.select("INBOX")
+        flash("Test IMAP réussi.", "success")
+        add_log(f"Test IMAP réussi par {g.user.username}.")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Test IMAP échoué : {exc}", "error")
+        add_log(f"Test IMAP échoué : {exc}", level="error")
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+    return redirect(url_for("main.settings"))
+
+
+@bp.route("/settings/test-smtp", methods=["POST"])
+@login_required
+def test_smtp_connection():
+    config = EmailConfig.get_singleton()
+    if (
+        not config.smtp_host
+        or not config.smtp_port
+        or not config.smtp_username
+        or not config.smtp_password
+    ):
+        flash("Configuration SMTP incomplète.", "error")
+        return redirect(url_for("main.settings"))
+
+    server = None
+    try:
+        if config.use_ssl:
+            server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=10)
+        else:
+            server = smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10)
+        server.login(config.smtp_username, config.smtp_password)
+        server.noop()
+        flash("Test SMTP réussi.", "success")
+        add_log(f"Test SMTP réussi par {g.user.username}.")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Test SMTP échoué : {exc}", "error")
+        add_log(f"Test SMTP échoué : {exc}", level="error")
+    finally:
+        if server:
+            try:
+                server.quit()
+            except Exception:  # noqa: BLE001
+                pass
+
+    return redirect(url_for("main.settings"))
 
 
 @bp.route("/run-check", methods=["POST"])
