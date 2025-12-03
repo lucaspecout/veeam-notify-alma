@@ -2,8 +2,6 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
-from .scheduler import init_scheduler
-
 
 db = SQLAlchemy()
 
@@ -18,6 +16,7 @@ def create_app():
 
     with app.app_context():
         from .routes import bp
+        from .scheduler import init_scheduler
 
         db.create_all()
         app.register_blueprint(bp)
