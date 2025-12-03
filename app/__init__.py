@@ -19,8 +19,10 @@ def create_app():
     with app.app_context():
         from .routes import bp
         from .scheduler import init_scheduler
+        from .models import User
 
         db.create_all()
+        User.ensure_default_admin()
         app.register_blueprint(bp)
         init_scheduler(app)
 

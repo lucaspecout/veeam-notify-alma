@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card">
+    <div class="table-actions">
+        <h2>Journal des actions</h2>
+    </div>
+    <table>
+        <thead>
+        <tr>
+            <th>Date</th>
+            <th>Niveau</th>
+            <th>Message</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for entry in entries %}
+            <tr>
+                <td>{{ entry.created_at.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                <td><span class="badge status-{{ entry.level.lower() }}">{{ entry.level }}</span></td>
+                <td>{{ entry.message }}</td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="3" class="empty">Aucune entrée pour le moment.</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

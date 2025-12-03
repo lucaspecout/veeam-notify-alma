@@ -38,6 +38,12 @@ nav a {
     font-weight: 600;
 }
 
+.user-badge {
+    margin-right: 1rem;
+    color: var(--muted);
+    font-weight: 600;
+}
+
 main {
     padding: 1.5rem 0 2rem;
 }
@@ -111,6 +117,19 @@ th {
     color: white;
 }
 
+.status-info {
+    background: var(--primary);
+}
+
+.status-warning {
+    background: var(--warning);
+    color: #111827;
+}
+
+.status-error {
+    background: var(--danger);
+}
+
 .status-ok {
     background: var(--success);
 }
@@ -166,6 +185,11 @@ input {
     justify-content: flex-end;
 }
 
+.auth-card {
+    max-width: 480px;
+    margin: 0 auto;
+}
+
 .flash-messages {
     list-style: none;
     padding: 0;
@@ -195,4 +219,9 @@ footer {
 .empty {
     text-align: center;
     color: var(--muted);
+}
+
+.muted {
+    color: var(--muted);
+    margin-top: 0.5rem;
 }
