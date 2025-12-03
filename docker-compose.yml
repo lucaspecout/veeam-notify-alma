@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       FLASK_APP: app
-      SECRET_KEY: ${SECRET_KEY:-change-me}
+      SECRET_KEY: ${SECRET_KEY:-sdfsdfsfsfojgpioje}
       DATABASE_URL: ${DATABASE_URL:-sqlite:////data/app.db}
       TZ: Europe/Paris
     ports:
