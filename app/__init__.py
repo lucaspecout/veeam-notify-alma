@@ -20,8 +20,10 @@ def create_app():
         from .routes import bp
         from .scheduler import init_scheduler
         from .models import User
+        from .db_migrations import run_migrations
 
         db.create_all()
+        run_migrations(db.engine)
         User.ensure_default_admin()
         app.register_blueprint(bp)
         init_scheduler(app)
