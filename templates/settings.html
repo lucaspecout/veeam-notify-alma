@@ -36,6 +36,18 @@
         <label for="smtp_password">Mot de passe SMTP</label>
         <input type="password" id="smtp_password" name="smtp_password" value="{{ config.smtp_password or '' }}">
     </div>
+    <div>
+        <h3>Rapports</h3>
+        <label for="report_recipients">Destinataires du rapport</label>
+        <input type="text" id="report_recipients" name="report_recipients" value="{{ config.report_recipients or '' }}" placeholder="email1@example.com, email2@example.com">
+        <p class="muted">Séparez plusieurs adresses par des virgules.</p>
+
+        <label>
+            <input type="checkbox" name="auto_report_enabled" {% if config.auto_report_enabled %}checked{% endif %}>
+            Programmer un envoi automatique chaque jour à 9h30
+        </label>
+        <p class="muted">Utilise la configuration SMTP ci-dessus.</p>
+    </div>
     <div class="form-actions full-width">
         <button type="submit" class="button">Enregistrer</button>
         <a class="button secondary" href="{{ url_for('main.index') }}">Retour</a>

@@ -8,8 +8,12 @@
     </div>
     <div class="actions">
         <a class="button" href="{{ url_for('main.new_client') }}">Nouveau client</a>
+        <a class="button secondary" href="{{ url_for('main.export_clients') }}">Exporter les clients</a>
         <form action="{{ url_for('main.run_check') }}" method="post" class="inline-form">
             <button type="submit" class="button secondary">Lancer une vérification maintenant</button>
+        </form>
+        <form action="{{ url_for('main.send_report') }}" method="post" class="inline-form">
+            <button type="submit" class="button secondary">Envoyer un rapport par e-mail</button>
         </form>
     </div>
 </div>
@@ -58,5 +62,14 @@
             </tbody>
         </table>
     </div>
+</div>
+
+<div class="card">
+    <h3>Import de clients</h3>
+    <p class="muted">Importez un fichier CSV (colonnes : name, expected_subject_ok, expected_subject_warning, expected_subject_failed). Les clients déjà présents sont ignorés.</p>
+    <form action="{{ url_for('main.import_clients') }}" method="post" enctype="multipart/form-data" class="inline-form">
+        <input type="file" name="file" accept=".csv" required>
+        <button type="submit" class="button">Importer</button>
+    </form>
 </div>
 {% endblock %}

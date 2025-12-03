@@ -1,8 +1,10 @@
 import email
 import os
+import smtplib
 from datetime import datetime, timedelta
 import imaplib
 from email.header import decode_header
+from email.message import EmailMessage
 from typing import List
 from zoneinfo import ZoneInfo
 
@@ -150,3 +152,85 @@ def run_email_checks(app=None):
                 client.last_note = f"Erreur IMAP: {exc}"
             db.session.commit()
             add_log(f"Erreur lors de la vérification des emails: {exc}", level="error")
+
+
+def build_status_report(clients: list[Client], tz: ZoneInfo) -> str:
+    header = ["Rapport de statut Veeam", "======================", ""]
+    lines = header
+    now = datetime.now(tz=tz)
+    lines.append(f"Généré le {now.strftime('%d/%m/%Y %H:%M')} ({tz})")
+    lines.append("")
+    for client in clients:
+        checked_at = (
+            client.last_checked_at.strftime("%d/%m/%Y %H:%M")
+            if client.last_checked_at
+            else "Jamais vérifié"
+        )
+        lines.append(f"- {client.name}: {client.status_label()}")
+        lines.append(f"  Dernier sujet : {client.last_subject or '—'}")
+        lines.append(f"  Dernière vérification : {checked_at}")
+        if client.last_note:
+            lines.append(f"  Note : {client.last_note}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def send_status_report(app=None) -> tuple[bool, str]:
+    app = app or current_app._get_current_object()
+    with app.app_context():
+        config = EmailConfig.get_singleton()
+        tz = ZoneInfo(os.getenv("TZ", "Europe/Paris"))
+        recipients = [
+            email.strip()
+            for email in (config.report_recipients or "").split(",")
+            if email.strip()
+        ]
+
+        if not recipients:
+            message = "Aucun destinataire configuré pour le rapport."
+            add_log(message, level="warning")
+            return False, message
+
+        missing_smtp = not (
+            config.smtp_host and config.smtp_port and config.smtp_username and config.smtp_password
+        )
+        if missing_smtp:
+            message = "Configuration SMTP incomplète pour l'envoi du rapport."
+            add_log(message, level="error")
+            return False, message
+
+        clients = Client.query.order_by(Client.name).all()
+        body = build_status_report(clients, tz)
+
+        msg = EmailMessage()
+        msg["Subject"] = f"Rapport Veeam - {datetime.now(tz=tz).strftime('%d/%m/%Y %H:%M')}"
+        msg["From"] = config.smtp_username
+        msg["To"] = ", ".join(recipients)
+        msg.set_content(body)
+
+        server = None
+        try:
+            use_ssl_direct = config.use_ssl and config.smtp_port == 465
+            if use_ssl_direct:
+                server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=10)
+            else:
+                server = smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10)
+                if config.use_ssl:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+            server.login(config.smtp_username, config.smtp_password)
+            server.send_message(msg)
+            add_log(f"Rapport envoyé à {len(recipients)} destinataire(s).")
+            return True, "Rapport envoyé avec succès."
+        except Exception as exc:  # noqa: BLE001
+            message = f"Échec de l'envoi du rapport : {exc}"
+            add_log(message, level="error")
+            return False, message
+        finally:
+            if server:
+                try:
+                    server.quit()
+                except Exception:  # noqa: BLE001
+                    pass
