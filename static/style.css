@@ -280,6 +280,17 @@ footer {
     color: var(--muted);
 }
 
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.footer-signature {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
 .empty {
     text-align: center;
     color: var(--muted);
