@@ -11,7 +11,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-sqlite:////data/app.db}
       TZ: Europe/Paris
     ports:
-      - "5000:5000"
+      - "5005:5000"
     volumes:
       - app_data:/data
 
