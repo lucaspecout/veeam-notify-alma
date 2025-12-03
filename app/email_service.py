@@ -306,8 +306,8 @@ def build_status_report_html(
     <!doctype html>
     <html lang=\"fr\">
     <body style=\"margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Helvetica,Arial,sans-serif;\">
-        <div style=\"max-width:760px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(15,23,42,0.08);\">
-            <div style=\"background:linear-gradient(120deg,#2563eb,#7c3aed);color:#f8fafc;padding:18px 22px;\">
+        <div style=\"max-width:760px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(15,23,42,0.08);\"> 
+            <div style=\"background:linear-gradient(120deg,#e5e7eb,#f8fafc);color:#0f172a;padding:18px 22px;\">
                 <div style=\"font-size:14px;opacity:0.9;letter-spacing:0.3px;\">Rapport Veeam</div>
                 <div style=\"font-size:22px;font-weight:700;margin-top:4px;\">Statut des notifications</div>
                 <div style=\"font-size:13px;opacity:0.85;margin-top:6px;\">Généré le {header_date} ({tz})</div>
