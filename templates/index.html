@@ -31,6 +31,8 @@
             <tr>
                 <th>Client</th>
                 <th>Statut</th>
+                <th>Statuts reçus (16h-9h)</th>
+                <th>Nb mails</th>
                 <th>Dernier sujet reçu</th>
                 <th>Dernière vérification</th>
                 <th>Notes</th>
@@ -44,6 +46,8 @@
                         <div class="client-name">{{ client.name }}</div>
                     </td>
                     <td><span class="badge status-{{ client.last_status | lower | replace(' ', '-') }}">{{ client.last_status }}</span></td>
+                    <td>{{ client.last_statuses or '—' }}</td>
+                    <td><strong>{{ client.last_email_count or 0 }}</strong></td>
                     <td class="monospace">{{ client.last_subject or '—' }}</td>
                     <td>{% if client.last_checked_at %}{{ client.last_checked_at.strftime('%d/%m/%Y %H:%M') }}{% else %}Jamais{% endif %}</td>
                     <td>{{ client.last_note or '—' }}</td>
@@ -56,7 +60,7 @@
                 </tr>
             {% else %}
                 <tr>
-                    <td colspan="6" class="empty">Ajoutez votre premier client pour démarrer le suivi.</td>
+                    <td colspan="8" class="empty">Ajoutez votre premier client pour démarrer le suivi.</td>
                 </tr>
             {% endfor %}
             </tbody>

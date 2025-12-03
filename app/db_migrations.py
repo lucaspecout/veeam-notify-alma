@@ -36,6 +36,14 @@ def ensure_client_subject_columns(engine: Engine) -> None:
             )
             columns_added.append("expected_subject_failed")
 
+        if "last_statuses" not in columns:
+            connection.execute(text("ALTER TABLE client ADD COLUMN last_statuses TEXT"))
+
+        if "last_email_count" not in columns:
+            connection.execute(
+                text("ALTER TABLE client ADD COLUMN last_email_count INTEGER DEFAULT 0 NOT NULL")
+            )
+
         if columns_added:
             connection.execute(
                 text(

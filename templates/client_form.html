@@ -5,13 +5,14 @@
     <label for="name">Nom du client</label>
     <input type="text" id="name" name="name" value="{{ client.name if client else '' }}" required>
 
-    <label for="expected_subject_ok">Objet attendu pour le statut OK</label>
+    <label for="expected_subject_ok">Début d'objet attendu pour le statut OK</label>
+    <p class="muted">Le texte saisi est recherché au début de l'objet du mail (par exemple : "Veeam MONCLIENT [Success]").</p>
     <input type="text" id="expected_subject_ok" name="expected_subject_ok" value="{{ client.subject_ok if client else '' }}" required>
 
-    <label for="expected_subject_warning">Objet attendu pour le statut Warning</label>
+    <label for="expected_subject_warning">Début d'objet attendu pour le statut Warning</label>
     <input type="text" id="expected_subject_warning" name="expected_subject_warning" value="{{ client.subject_warning if client else '' }}" required>
 
-    <label for="expected_subject_failed">Objet attendu pour le statut Failed</label>
+    <label for="expected_subject_failed">Début d'objet attendu pour le statut Failed</label>
     <input type="text" id="expected_subject_failed" name="expected_subject_failed" value="{{ client.subject_failed if client else '' }}" required>
 
     <div class="form-actions">

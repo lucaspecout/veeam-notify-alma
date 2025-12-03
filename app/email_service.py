@@ -36,7 +36,7 @@ def decode_subject(raw_subject: str) -> str:
 
 
 def extract_status_from_subject(subject: str, client: Client) -> str | None:
-    subject_lower = subject.lower()
+    subject_lower = subject.lower().strip()
     expected_pairs = [
         (STATUS_FAILED, client.subject_failed),
         (STATUS_WARNING, client.subject_warning),
@@ -44,7 +44,8 @@ def extract_status_from_subject(subject: str, client: Client) -> str | None:
     ]
 
     for status, expected in expected_pairs:
-        if expected and expected.lower() in subject_lower:
+        expected_lower = expected.lower().strip()
+        if expected_lower and subject_lower.startswith(expected_lower):
             return status
 
     return None
@@ -71,10 +72,13 @@ def find_matching_subject(
     start_time: datetime,
     end_time: datetime,
     tz: ZoneInfo,
-) -> tuple[str | None, str | None, str | None]:
+) -> tuple[str | None, str | None, str | None, str | None, int]:
     matched_subject = None
     matched_status = None
+    matched_statuses_summary = None
+    email_count = 0
     note = None
+    status_counts: dict[str, int] = {}
     for msg_id in reversed(message_ids):
         status, msg_data = mail.fetch(msg_id, "(RFC822)")
         if status != "OK" or not msg_data:
@@ -91,9 +95,24 @@ def find_matching_subject(
         subject = decode_subject(message.get("Subject", ""))
         matched_status = extract_status_from_subject(subject, client)
         if matched_status:
-            matched_subject = subject
-            break
-    return matched_subject, note, matched_status
+            if matched_subject is None:
+                matched_subject = subject
+            status_counts[matched_status] = status_counts.get(matched_status, 0) + 1
+
+    if status_counts:
+        email_count = sum(status_counts.values())
+        status_order = [STATUS_FAILED, STATUS_WARNING, STATUS_OK]
+        matched_status = next(
+            (status for status in status_order if status_counts.get(status)), None
+        )
+        parts = [
+            f"{status} ×{status_counts[status]}" if status_counts[status] > 1 else status
+            for status in status_order
+            if status_counts.get(status)
+        ]
+        matched_statuses_summary = ", ".join(parts)
+
+    return matched_subject, note, matched_status, matched_statuses_summary, email_count
 
 
 def run_email_checks(app=None):
@@ -106,12 +125,16 @@ def run_email_checks(app=None):
         start_time = (now - timedelta(days=1)).replace(
             hour=16, minute=0, second=0, microsecond=0
         )
+        end_time_target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        end_time = end_time_target if end_time_target < now else now
 
         if not config.imap_host or not config.imap_username or not config.imap_password:
             for client in clients:
                 client.last_status = STATUS_MISSING
                 client.last_checked_at = now
                 client.last_note = "Configuration IMAP incomplète."
+                client.last_email_count = 0
+                client.last_statuses = None
             db.session.commit()
             add_log("Vérification impossible : configuration IMAP incomplète.", level="warning")
             return
@@ -130,18 +153,31 @@ def run_email_checks(app=None):
             message_ids = search_data[0].split()
 
             for client in clients:
-                matched_subject, note, matched_status = find_matching_subject(
-                    message_ids, client, mail, start_time, now, tz
-                )
+                (
+                    matched_subject,
+                    note,
+                    matched_status,
+                    matched_statuses,
+                    email_count,
+                ) = find_matching_subject(message_ids, client, mail, start_time, end_time, tz)
+                client.last_email_count = email_count
+                client.last_statuses = matched_statuses
                 if matched_subject:
                     client.last_status = matched_status or STATUS_OK
                     client.last_subject = matched_subject
                     client.last_note = None
+                    if not matched_statuses:
+                        client.last_statuses = matched_status
+                        client.last_email_count = 1
                 else:
                     client.last_status = STATUS_MISSING
                     client.last_subject = None
-                    window = f"depuis {start_time.strftime('%d/%m %H:%M')} ({tz})"
-                    client.last_note = note or f"Aucun message reçu {window} ne correspond à l'objet attendu."
+                    client.last_statuses = None
+                    client.last_email_count = 0
+                    client.last_note = (
+                        note
+                        or f"Aucun message reçu entre {start_time.strftime('%d/%m %H:%M')} et {end_time.strftime('%d/%m %H:%M')} ({tz}) ne correspond au début d'objet attendu."
+                    )
                 client.last_checked_at = now
 
             mail.logout()
@@ -170,6 +206,10 @@ def build_status_report(clients: list[Client], tz: ZoneInfo) -> str:
         )
         lines.append(f"- {client.name}: {client.status_label()}")
         lines.append(f"  Dernier sujet : {client.last_subject or '—'}")
+        lines.append(
+            "  Statuts reçus (16h-9h) : "
+            f"{client.last_statuses or '—'} ({client.last_email_count or 0} mail(s))"
+        )
         lines.append(f"  Dernière vérification : {checked_at}")
         if client.last_note:
             lines.append(f"  Note : {client.last_note}")
@@ -201,6 +241,8 @@ def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
         )
         subject = client.last_subject or "—"
         note = client.last_note or "—"
+        statuses = client.last_statuses or "—"
+        email_count = client.last_email_count or 0
         rows.append(
             """
             <tr>
@@ -208,6 +250,8 @@ def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
                 <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;">
                     <span style="display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;color:{fg};background:{bg};border:1px solid {fg}1a;">{status}</span>
                 </td>
+                <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;color:#374151;">{statuses}</td>
+                <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">{email_count}</td>
                 <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;font-family:'SFMono-Regular',Consolas,monospace;color:#374151;font-size:13px;">{subject}</td>
                 <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;color:#374151;">{checked_at}</td>
                 <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;color:#4b5563;">{note}</td>
@@ -218,6 +262,8 @@ def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
                 subject=html.escape(subject),
                 checked_at=html.escape(checked_at),
                 note=html.escape(note),
+                statuses=html.escape(statuses),
+                email_count=email_count,
                 fg=fg,
                 bg=bg,
             )
@@ -225,7 +271,7 @@ def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
 
     table_body = "".join(rows) or """
         <tr>
-            <td colspan="5" style="padding:16px;text-align:center;color:#6b7280;background:#f9fafb;">
+            <td colspan="7" style="padding:16px;text-align:center;color:#6b7280;background:#f9fafb;">
                 Aucun client n'a été configuré pour le moment.
             </td>
         </tr>
@@ -252,6 +298,8 @@ def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
                         <tr style=\"background:#f9fafb;border-bottom:1px solid #e5e7eb;\">
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Client</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statut</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statuts (16h-9h)</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Mails reçus</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Dernier sujet</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Vérifié le</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Notes</th>
