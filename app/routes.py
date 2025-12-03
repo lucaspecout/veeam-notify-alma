@@ -1,9 +1,12 @@
+import csv
 import imaplib
+import io
 import smtplib
 from functools import wraps
 
 from flask import (
     Blueprint,
+    current_app,
     flash,
     g,
     jsonify,
@@ -15,8 +18,9 @@ from flask import (
 )
 
 from . import db
-from .email_service import run_email_checks
+from .email_service import run_email_checks, send_status_report
 from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
+from .scheduler import configure_jobs
 
 
 bp = Blueprint("main", __name__)
@@ -130,6 +134,81 @@ def delete_client(client_id: int):
     return redirect(url_for("main.index"))
 
 
+@bp.route("/clients/export", methods=["GET"])
+@login_required
+def export_clients():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "name",
+        "expected_subject_ok",
+        "expected_subject_warning",
+        "expected_subject_failed",
+    ])
+    for client in Client.query.order_by(Client.name).all():
+        writer.writerow([
+            client.name,
+            client.expected_subject_ok or "",
+            client.expected_subject_warning or "",
+            client.expected_subject_failed or "",
+        ])
+
+    response = current_app.response_class(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=clients.csv"},
+    )
+    add_log(f"Export des clients effectué par {g.user.username}.")
+    return response
+
+
+@bp.route("/clients/import", methods=["POST"])
+@login_required
+def import_clients():
+    uploaded = request.files.get("file")
+    if not uploaded or uploaded.filename == "":
+        flash("Merci de sélectionner un fichier CSV.", "error")
+        return redirect(url_for("main.index"))
+
+    try:
+        stream = io.StringIO(uploaded.stream.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        flash("Impossible de lire le fichier fourni.", "error")
+        return redirect(url_for("main.index"))
+
+    reader = csv.DictReader(stream)
+    existing_names = {client.name.lower() for client in Client.query.all()}
+    created = 0
+    skipped = 0
+
+    for row in reader:
+        name = (row.get("name") or "").strip()
+        if not name:
+            continue
+        if name.lower() in existing_names:
+            skipped += 1
+            continue
+
+        client = Client(
+            name=name,
+            expected_subject_ok=(row.get("expected_subject_ok") or "").strip(),
+            expected_subject_warning=(row.get("expected_subject_warning") or "").strip(),
+            expected_subject_failed=(row.get("expected_subject_failed") or "").strip(),
+            expected_subject=(row.get("expected_subject_ok") or "").strip(),
+            last_status=STATUS_MISSING,
+        )
+        db.session.add(client)
+        existing_names.add(name.lower())
+        created += 1
+
+    db.session.commit()
+    add_log(
+        f"Import de clients réalisé par {g.user.username}: {created} ajoutés, {skipped} ignorés."
+    )
+    flash(f"Import terminé : {created} ajouté(s), {skipped} ignoré(s).", "success")
+    return redirect(url_for("main.index"))
+
+
 @bp.route("/settings", methods=["GET", "POST"])
 @login_required
 def settings():
@@ -144,7 +223,10 @@ def settings():
         config.smtp_username = request.form.get("smtp_username") or None
         config.smtp_password = request.form.get("smtp_password") or None
         config.use_ssl = request.form.get("use_ssl") == "on"
+        config.report_recipients = request.form.get("report_recipients") or None
+        config.auto_report_enabled = request.form.get("auto_report_enabled") == "on"
         db.session.commit()
+        configure_jobs(current_app._get_current_object())
         add_log(f"Configuration e-mail mise à jour par {g.user.username}.")
         flash("Configuration mise à jour.", "success")
         return redirect(url_for("main.settings"))
@@ -246,6 +328,14 @@ def test_smtp_connection():
 def run_check():
     run_email_checks()
     flash("Vérification lancée.", "success")
+    return redirect(url_for("main.index"))
+
+
+@bp.route("/send-report", methods=["POST"])
+@login_required
+def send_report():
+    success, message = send_status_report()
+    flash(message, "success" if success else "error")
     return redirect(url_for("main.index"))
 
 

@@ -6,6 +6,7 @@ from sqlalchemy.engine import Engine
 
 def run_migrations(engine: Engine) -> None:
     ensure_client_subject_columns(engine)
+    ensure_email_config_report_columns(engine)
 
 
 def ensure_client_subject_columns(engine: Engine) -> None:
@@ -46,4 +47,23 @@ def ensure_client_subject_columns(engine: Engine) -> None:
                         expected_subject_failed = COALESCE(expected_subject_failed, '')
                     """
                 )
+            )
+
+
+def ensure_email_config_report_columns(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "email_config" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("email_config")}
+
+    with engine.begin() as connection:
+        if "report_recipients" not in columns:
+            connection.execute(
+                text("ALTER TABLE email_config ADD COLUMN report_recipients TEXT")
+            )
+
+        if "auto_report_enabled" not in columns:
+            connection.execute(
+                text("ALTER TABLE email_config ADD COLUMN auto_report_enabled BOOLEAN DEFAULT 0 NOT NULL")
             )

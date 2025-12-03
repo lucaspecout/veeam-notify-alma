@@ -58,6 +58,8 @@ class EmailConfig(db.Model):
     smtp_username = db.Column(db.String(256))
     smtp_password = db.Column(db.String(256))
     use_ssl = db.Column(db.Boolean, default=True)
+    report_recipients = db.Column(db.Text)
+    auto_report_enabled = db.Column(db.Boolean, default=False, nullable=False)
     updated_at = db.Column(db.DateTime, default=current_time, onupdate=current_time)
 
     @classmethod
