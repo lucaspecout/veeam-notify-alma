@@ -7,7 +7,15 @@ from typing import List
 from flask import current_app
 
 from . import db
-from .models import Client, EmailConfig, STATUS_FAILED, STATUS_MISSING, STATUS_OK, STATUS_WARNING
+from .models import (
+    Client,
+    EmailConfig,
+    STATUS_FAILED,
+    STATUS_MISSING,
+    STATUS_OK,
+    STATUS_WARNING,
+    add_log,
+)
 
 
 def decode_subject(raw_subject: str) -> str:
@@ -59,6 +67,7 @@ def run_email_checks(app=None):
                 client.last_checked_at = datetime.utcnow()
                 client.last_note = "Configuration IMAP incomplète."
             db.session.commit()
+            add_log("Vérification impossible : configuration IMAP incomplète.", level="warning")
             return
 
         try:
@@ -85,9 +94,11 @@ def run_email_checks(app=None):
 
             mail.logout()
             db.session.commit()
+            add_log(f"Vérification des emails effectuée pour {len(clients)} clients.")
         except Exception as exc:  # noqa: BLE001
             for client in clients:
                 client.last_status = STATUS_MISSING
                 client.last_checked_at = datetime.utcnow()
                 client.last_note = f"Erreur IMAP: {exc}"
             db.session.commit()
+            add_log(f"Erreur lors de la vérification des emails: {exc}", level="error")

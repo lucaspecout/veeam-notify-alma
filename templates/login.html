@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card auth-card">
+    <h2>Connexion</h2>
+    <form method="post">
+        <label for="username">Nom d'utilisateur</label>
+        <input type="text" id="username" name="username" required>
+
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" required>
+
+        <div class="form-actions">
+            <button type="submit" class="button">Se connecter</button>
+        </div>
+    </form>
+    <p class="muted">Compte par défaut : admin / admin</p>
+</div>
+{% endblock %}

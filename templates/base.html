@@ -11,8 +11,16 @@
     <div class="container">
         <h1>Suivi des notifications Veeam</h1>
         <nav>
-            <a href="{{ url_for('main.index') }}">Tableau de bord</a>
-            <a href="{{ url_for('main.settings') }}">Paramètres</a>
+            {% if g.user %}
+                <a href="{{ url_for('main.index') }}">Tableau de bord</a>
+                <a href="{{ url_for('main.settings') }}">Paramètres</a>
+                <a href="{{ url_for('main.logs') }}">Logs</a>
+                <span class="user-badge">Connecté en tant que {{ g.user.username }}</span>
+                <a href="{{ url_for('main.change_password') }}">Changer le mot de passe</a>
+                <a href="{{ url_for('main.logout') }}">Se déconnecter</a>
+            {% else %}
+                <a href="{{ url_for('main.login') }}">Connexion</a>
+            {% endif %}
         </nav>
     </div>
 </header>

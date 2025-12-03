@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from . import db
 
 
@@ -44,3 +46,37 @@ class EmailConfig(db.Model):
             db.session.add(instance)
             db.session.commit()
         return instance
+
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(64), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def set_password(self, raw_password: str) -> None:
+        self.password_hash = generate_password_hash(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        return check_password_hash(self.password_hash, raw_password)
+
+    @classmethod
+    def ensure_default_admin(cls):
+        if not cls.query.filter_by(username="admin").first():
+            admin = cls(username="admin")
+            admin.set_password("admin")
+            db.session.add(admin)
+            db.session.commit()
+
+
+class LogEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    level = db.Column(db.String(16), default="INFO", nullable=False)
+    message = db.Column(db.Text, nullable=False)
+
+
+def add_log(message: str, level: str = "INFO") -> None:
+    entry = LogEntry(message=message, level=level.upper())
+    db.session.add(entry)
+    db.session.commit()
