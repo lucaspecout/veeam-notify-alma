@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="actions">
+    <a class="button" href="{{ url_for('main.new_client') }}">Nouveau client</a>
+    <form action="{{ url_for('main.run_check') }}" method="post" class="inline-form">
+        <button type="submit" class="button secondary">Lancer une vérification maintenant</button>
+    </form>
+</div>
+<table>
+    <thead>
+    <tr>
+        <th>Client</th>
+        <th>Objet attendu</th>
+        <th>Statut</th>
+        <th>Dernier sujet reçu</th>
+        <th>Dernière vérification</th>
+        <th>Notes</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for client in clients %}
+        <tr>
+            <td>{{ client.name }}</td>
+            <td class="monospace">{{ client.expected_subject }}</td>
+            <td><span class="badge status-{{ client.last_status | lower | replace(' ', '-') }}">{{ client.last_status }}</span></td>
+            <td class="monospace">{{ client.last_subject or '—' }}</td>
+            <td>{% if client.last_checked_at %}{{ client.last_checked_at.strftime('%d/%m/%Y %H:%M') }}{% else %}Jamais{% endif %}</td>
+            <td>{{ client.last_note or '—' }}</td>
+            <td>
+                <a href="{{ url_for('main.edit_client', client_id=client.id) }}">Modifier</a>
+                <form action="{{ url_for('main.delete_client', client_id=client.id) }}" method="post" class="inline-form" onsubmit="return confirm('Supprimer ce client ?');">
+                    <button type="submit" class="link">Supprimer</button>
+                </form>
+            </td>
+        </tr>
+    {% else %}
+        <tr>
+            <td colspan="7" class="empty">Ajoutez votre premier client pour démarrer le suivi.</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ 'Modifier' if client else 'Nouveau' }} client</h2>
+<form method="post" class="card">
+    <label for="name">Nom du client</label>
+    <input type="text" id="name" name="name" value="{{ client.name if client else '' }}" required>
+
+    <label for="expected_subject">Objet attendu</label>
+    <input type="text" id="expected_subject" name="expected_subject" value="{{ client.expected_subject if client else '' }}" required>
+
+    <div class="form-actions">
+        <button type="submit" class="button">Enregistrer</button>
+        <a class="button secondary" href="{{ url_for('main.index') }}">Annuler</a>
+    </div>
+</form>
+{% endblock %}
