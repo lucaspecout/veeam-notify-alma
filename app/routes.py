@@ -6,6 +6,7 @@ from flask import (
     Blueprint,
     flash,
     g,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -138,22 +139,31 @@ def settings():
 def test_imap_connection():
     config = EmailConfig.get_singleton()
     if not config.imap_host or not config.imap_username or not config.imap_password:
-        flash("Configuration IMAP incomplète.", "error")
+        message = "Configuration IMAP incomplète."
+        if request.accept_mimetypes.accept_json:
+            return jsonify({"success": False, "message": message}), 400
+        flash(message, "error")
         return redirect(url_for("main.settings"))
 
     mail = None
     try:
         if config.use_ssl:
-            mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port)
+            mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port, timeout=10)
         else:
-            mail = imaplib.IMAP4(config.imap_host, config.imap_port)
+            mail = imaplib.IMAP4(config.imap_host, config.imap_port, timeout=10)
         mail.login(config.imap_username, config.imap_password)
         mail.select("INBOX")
-        flash("Test IMAP réussi.", "success")
-        add_log(f"Test IMAP réussi par {g.user.username}.")
+        message = "Test IMAP réussi."
+        add_log(f"{message} par {g.user.username}.")
+        if request.accept_mimetypes.accept_json:
+            return jsonify({"success": True, "message": message})
+        flash(message, "success")
     except Exception as exc:  # noqa: BLE001
-        flash(f"Test IMAP échoué : {exc}", "error")
-        add_log(f"Test IMAP échoué : {exc}", level="error")
+        message = f"Test IMAP échoué : {exc}"
+        add_log(message, level="error")
+        if request.accept_mimetypes.accept_json:
+            return jsonify({"success": False, "message": message}), 500
+        flash(message, "error")
     finally:
         if mail:
             try:
@@ -174,7 +184,10 @@ def test_smtp_connection():
         or not config.smtp_username
         or not config.smtp_password
     ):
-        flash("Configuration SMTP incomplète.", "error")
+        message = "Configuration SMTP incomplète."
+        if request.accept_mimetypes.accept_json:
+            return jsonify({"success": False, "message": message}), 400
+        flash(message, "error")
         return redirect(url_for("main.settings"))
 
     server = None
@@ -185,11 +198,17 @@ def test_smtp_connection():
             server = smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10)
         server.login(config.smtp_username, config.smtp_password)
         server.noop()
-        flash("Test SMTP réussi.", "success")
-        add_log(f"Test SMTP réussi par {g.user.username}.")
+        message = "Test SMTP réussi."
+        add_log(f"{message} par {g.user.username}.")
+        if request.accept_mimetypes.accept_json:
+            return jsonify({"success": True, "message": message})
+        flash(message, "success")
     except Exception as exc:  # noqa: BLE001
-        flash(f"Test SMTP échoué : {exc}", "error")
-        add_log(f"Test SMTP échoué : {exc}", level="error")
+        message = f"Test SMTP échoué : {exc}"
+        add_log(message, level="error")
+        if request.accept_mimetypes.accept_json:
+            return jsonify({"success": False, "message": message}), 500
+        flash(message, "error")
     finally:
         if server:
             try:

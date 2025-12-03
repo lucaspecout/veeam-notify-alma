@@ -42,13 +42,82 @@
 
 <h3>Tests de connexion</h3>
 <div class="grid">
-    <form method="post" action="{{ url_for('main.test_imap_connection') }}" class="card">
+    <form method="post" action="{{ url_for('main.test_imap_connection') }}" class="card async-test-form" data-status-target="imap-status">
         <p>Vérifie la connexion au serveur IMAP configuré.</p>
+        <div class="test-status" id="imap-status" aria-live="polite"></div>
         <button type="submit" class="button">Tester IMAP</button>
     </form>
-    <form method="post" action="{{ url_for('main.test_smtp_connection') }}" class="card">
+    <form method="post" action="{{ url_for('main.test_smtp_connection') }}" class="card async-test-form" data-status-target="smtp-status">
         <p>Vérifie la connexion au serveur SMTP configuré.</p>
+        <div class="test-status" id="smtp-status" aria-live="polite"></div>
         <button type="submit" class="button">Tester SMTP</button>
     </form>
 </div>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const forms = document.querySelectorAll('.async-test-form');
+
+        const setStatus = (container, message, status) => {
+            if (!container) return;
+            container.classList.remove('success', 'error', 'loading');
+            if (status) container.classList.add(status);
+            container.innerHTML = message;
+        };
+
+        forms.forEach((form) => {
+            const statusTarget = form.dataset.statusTarget;
+            const statusContainer = document.getElementById(statusTarget);
+            const submitButton = form.querySelector('button[type="submit"]');
+
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (statusContainer) {
+                    setStatus(
+                        statusContainer,
+                        '<span class="spinner"></span> Test en cours…',
+                        'loading',
+                    );
+                }
+                if (submitButton) {
+                    submitButton.disabled = true;
+                }
+
+                const controller = new AbortController();
+                const abortTimeout = setTimeout(() => controller.abort(), 15000);
+
+                fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    signal: controller.signal,
+                })
+                    .then(async (response) => {
+                        clearTimeout(abortTimeout);
+                        let payload;
+                        try {
+                            payload = await response.json();
+                        } catch (error) {
+                            throw new Error('Réponse inattendue du serveur.');
+                        }
+
+                        const status = payload.success ? 'success' : 'error';
+                        setStatus(statusContainer, payload.message, status);
+                    })
+                    .catch((error) => {
+                        const message = error.name === 'AbortError'
+                            ? 'Test annulé : délai dépassé.'
+                            : error.message || 'Le test a échoué.';
+                        setStatus(statusContainer, message, 'error');
+                    })
+                    .finally(() => {
+                        if (submitButton) {
+                            submitButton.disabled = false;
+                        }
+                    });
+            });
+        });
+    });
+</script>
 {% endblock %}
