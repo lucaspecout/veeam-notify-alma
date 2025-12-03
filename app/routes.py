@@ -18,7 +18,7 @@ from flask import (
 )
 
 from . import db
-from .email_service import run_email_checks, send_status_report
+from .email_service import parse_report_recipients, run_email_checks, send_status_report
 from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
 from .scheduler import configure_jobs
 
@@ -223,7 +223,9 @@ def settings():
         config.smtp_username = request.form.get("smtp_username") or None
         config.smtp_password = request.form.get("smtp_password") or None
         config.use_ssl = request.form.get("use_ssl") == "on"
-        config.report_recipients = request.form.get("report_recipients") or None
+        raw_recipients = request.form.get("report_recipients", "")
+        recipients = parse_report_recipients(raw_recipients)
+        config.report_recipients = ", ".join(recipients) if recipients else None
         config.auto_report_enabled = request.form.get("auto_report_enabled") == "on"
         db.session.commit()
         configure_jobs(current_app._get_current_object())
