@@ -1,6 +1,6 @@
 # Veeam Notification Monitor
 
-Cette application Flask offre un tableau de bord pour vérifier automatiquement les e-mails de notification Veeam envoyés à une boîte dédiée. Elle vérifie chaque jour à 9h (Europe/Paris) si les objets attendus ont été reçus et attribue un statut : OK, Non reçu, Failed ou Warning.
+Cette application Flask offre un tableau de bord pour vérifier automatiquement les e-mails de notification Veeam envoyés à une boîte dédiée. Elle vérifie chaque jour à 9h (Europe/Paris) si les objets attendus ont été reçus et attribue un statut : OK, Non reçu, Failed ou Warning. Le créneau de recherche des e-mails (par défaut de 16h la veille à 9h le jour même) est modifiable dans les paramètres.
 
 ## Démarrage rapide
 

@@ -23,6 +23,28 @@ from .models import (
     add_log,
 )
 
+DEFAULT_WINDOW_START_HOUR = 16
+DEFAULT_WINDOW_END_HOUR = 9
+
+
+def _sanitize_hour(value: int | None, default: int) -> int:
+    try:
+        hour = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0, min(23, hour))
+
+
+def get_window_hours(config: EmailConfig) -> tuple[int, int]:
+    start_hour = _sanitize_hour(config.check_window_start_hour, DEFAULT_WINDOW_START_HOUR)
+    end_hour = _sanitize_hour(config.check_window_end_hour, DEFAULT_WINDOW_END_HOUR)
+    return start_hour, end_hour
+
+
+def format_window_label(config: EmailConfig) -> str:
+    start_hour, end_hour = get_window_hours(config)
+    return f"{start_hour:02d}h-{end_hour:02d}h"
+
 
 def decode_subject(raw_subject: str) -> str:
     decoded_parts = decode_header(raw_subject)
@@ -122,10 +144,11 @@ def run_email_checks(app=None):
         config = EmailConfig.get_singleton()
         tz = ZoneInfo(os.getenv("TZ", "Europe/Paris"))
         now = datetime.now(tz=tz)
+        start_hour, end_hour = get_window_hours(config)
         start_time = (now - timedelta(days=1)).replace(
-            hour=16, minute=0, second=0, microsecond=0
+            hour=start_hour, minute=0, second=0, microsecond=0
         )
-        end_time_target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        end_time_target = now.replace(hour=end_hour, minute=0, second=0, microsecond=0)
         end_time = end_time_target if end_time_target < now else now
 
         if not config.imap_host or not config.imap_username or not config.imap_password:
@@ -192,7 +215,7 @@ def run_email_checks(app=None):
             add_log(f"Erreur lors de la vérification des emails: {exc}", level="error")
 
 
-def build_status_report(clients: list[Client], tz: ZoneInfo) -> str:
+def build_status_report(clients: list[Client], tz: ZoneInfo, window_label: str) -> str:
     header = ["Rapport de statut Veeam", "======================", ""]
     lines = header
     now = datetime.now(tz=tz)
@@ -207,7 +230,7 @@ def build_status_report(clients: list[Client], tz: ZoneInfo) -> str:
         lines.append(f"- {client.name}: {client.status_label()}")
         lines.append(f"  Dernier sujet : {client.last_subject or '—'}")
         lines.append(
-            "  Statuts reçus (16h-9h) : "
+            f"  Statuts reçus ({window_label}) : "
             f"{client.last_statuses or '—'} ({client.last_email_count or 0} mail(s))"
         )
         lines.append(f"  Dernière vérification : {checked_at}")
@@ -228,7 +251,9 @@ def _status_badge(status: str) -> tuple[str, str]:
     return palette.get(status, ("#0ea5e9", "#e0f2fe"))
 
 
-def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
+def build_status_report_html(
+    clients: list[Client], tz: ZoneInfo, window_label: str
+) -> str:
     now = datetime.now(tz=tz)
     header_date = now.strftime("%d/%m/%Y %H:%M")
     rows: list[str] = []
@@ -298,7 +323,7 @@ def build_status_report_html(clients: list[Client], tz: ZoneInfo) -> str:
                         <tr style=\"background:#f9fafb;border-bottom:1px solid #e5e7eb;\">
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Client</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statut</th>
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statuts (16h-9h)</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statuts ({window_label})</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Mails reçus</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Dernier sujet</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Vérifié le</th>
@@ -348,8 +373,9 @@ def send_status_report(app=None) -> tuple[bool, str]:
             return False, message
 
         clients = Client.query.order_by(Client.name).all()
-        body = build_status_report(clients, tz)
-        html_body = build_status_report_html(clients, tz)
+        window_label = format_window_label(config)
+        body = build_status_report(clients, tz, window_label)
+        html_body = build_status_report_html(clients, tz, window_label)
 
         msg = EmailMessage()
         msg["Subject"] = f"Rapport Veeam - {datetime.now(tz=tz).strftime('%d/%m/%Y %H:%M')}"

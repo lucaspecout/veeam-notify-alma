@@ -62,13 +62,20 @@ class EmailConfig(db.Model):
     use_ssl = db.Column(db.Boolean, default=True)
     report_recipients = db.Column(db.Text)
     auto_report_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    check_window_start_hour = db.Column(db.Integer, default=16, nullable=False)
+    check_window_end_hour = db.Column(db.Integer, default=9, nullable=False)
     updated_at = db.Column(db.DateTime, default=current_time, onupdate=current_time)
 
     @classmethod
     def get_singleton(cls):
         instance = cls.query.first()
         if not instance:
-            instance = cls(imap_port=993, use_ssl=True)
+            instance = cls(
+                imap_port=993,
+                use_ssl=True,
+                check_window_start_hour=16,
+                check_window_end_hour=9,
+            )
             db.session.add(instance)
             db.session.commit()
         return instance
