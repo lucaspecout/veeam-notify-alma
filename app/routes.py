@@ -18,7 +18,14 @@ from flask import (
 )
 
 from . import db
-from .email_service import parse_report_recipients, run_email_checks, send_status_report
+from .email_service import (
+    DEFAULT_WINDOW_END_HOUR,
+    DEFAULT_WINDOW_START_HOUR,
+    format_window_label,
+    parse_report_recipients,
+    run_email_checks,
+    send_status_report,
+)
 from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
 from .scheduler import configure_jobs
 
@@ -34,6 +41,14 @@ def login_required(view):
         return view(**kwargs)
 
     return wrapped_view
+
+
+def _parse_hour(value: str | None, default: int) -> int:
+    try:
+        parsed = int(value) if value is not None else default
+    except ValueError:
+        return default
+    return max(0, min(23, parsed))
 
 
 @bp.before_app_request
@@ -71,7 +86,11 @@ def logout():
 @login_required
 def index():
     clients = Client.query.order_by(Client.name).all()
-    return render_template("index.html", clients=clients, statuses=STATUS_CHOICES)
+    config = EmailConfig.get_singleton()
+    window_label = format_window_label(config)
+    return render_template(
+        "index.html", clients=clients, statuses=STATUS_CHOICES, window_label=window_label
+    )
 
 
 @bp.route("/clients/new", methods=["GET", "POST"])
@@ -227,6 +246,22 @@ def settings():
         recipients = parse_report_recipients(raw_recipients)
         config.report_recipients = ", ".join(recipients) if recipients else None
         config.auto_report_enabled = request.form.get("auto_report_enabled") == "on"
+        start_hour_default = (
+            config.check_window_start_hour
+            if config.check_window_start_hour is not None
+            else DEFAULT_WINDOW_START_HOUR
+        )
+        end_hour_default = (
+            config.check_window_end_hour
+            if config.check_window_end_hour is not None
+            else DEFAULT_WINDOW_END_HOUR
+        )
+        config.check_window_start_hour = _parse_hour(
+            request.form.get("check_window_start_hour"), start_hour_default
+        )
+        config.check_window_end_hour = _parse_hour(
+            request.form.get("check_window_end_hour"), end_hour_default
+        )
         db.session.commit()
         configure_jobs(current_app._get_current_object())
         add_log(f"Configuration e-mail mise à jour par {g.user.username}.")

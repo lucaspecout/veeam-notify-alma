@@ -75,3 +75,19 @@ def ensure_email_config_report_columns(engine: Engine) -> None:
             connection.execute(
                 text("ALTER TABLE email_config ADD COLUMN auto_report_enabled BOOLEAN DEFAULT 0 NOT NULL")
             )
+
+        if "check_window_start_hour" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE email_config "
+                    "ADD COLUMN check_window_start_hour INTEGER DEFAULT 16 NOT NULL"
+                )
+            )
+
+        if "check_window_end_hour" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE email_config "
+                    "ADD COLUMN check_window_end_hour INTEGER DEFAULT 9 NOT NULL"
+                )
+            )
