@@ -91,12 +91,14 @@ def run_email_checks(app=None):
         config = EmailConfig.get_singleton()
         tz = ZoneInfo(os.getenv("TZ", "Europe/Paris"))
         now = datetime.now(tz=tz)
-        start_time = (now - timedelta(days=1)).replace(hour=22, minute=0, second=0, microsecond=0)
+        start_time = (now - timedelta(days=1)).replace(
+            hour=16, minute=0, second=0, microsecond=0
+        )
 
         if not config.imap_host or not config.imap_username or not config.imap_password:
             for client in clients:
                 client.last_status = STATUS_MISSING
-                client.last_checked_at = datetime.utcnow()
+                client.last_checked_at = now
                 client.last_note = "Configuration IMAP incomplète."
             db.session.commit()
             add_log("Vérification impossible : configuration IMAP incomplète.", level="warning")
@@ -128,7 +130,7 @@ def run_email_checks(app=None):
                     client.last_subject = None
                     window = f"depuis {start_time.strftime('%d/%m %H:%M')} ({tz})"
                     client.last_note = note or f"Aucun message reçu {window} ne correspond à l'objet attendu."
-                client.last_checked_at = datetime.utcnow()
+                client.last_checked_at = now
 
             mail.logout()
             db.session.commit()
@@ -136,7 +138,7 @@ def run_email_checks(app=None):
         except Exception as exc:  # noqa: BLE001
             for client in clients:
                 client.last_status = STATUS_MISSING
-                client.last_checked_at = datetime.utcnow()
+                client.last_checked_at = now
                 client.last_note = f"Erreur IMAP: {exc}"
             db.session.commit()
             add_log(f"Erreur lors de la vérification des emails: {exc}", level="error")
