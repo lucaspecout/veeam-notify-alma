@@ -44,9 +44,62 @@
 
         <label>
             <input type="checkbox" name="auto_report_enabled" {% if config.auto_report_enabled %}checked{% endif %}>
-            Programmer un envoi automatique chaque jour à 9h30
+            Programmer un envoi automatique chaque jour
         </label>
         <p class="muted">Utilise la configuration SMTP ci-dessus.</p>
+
+        <div class="grid">
+            <div>
+                <label for="report_schedule_hour">Heure d'envoi</label>
+                <input
+                    type="number"
+                    id="report_schedule_hour"
+                    name="report_schedule_hour"
+                    min="0"
+                    max="23"
+                    value="{{ config.report_schedule_hour if config.report_schedule_hour is not none else 9 }}"
+                >
+            </div>
+            <div>
+                <label for="report_schedule_minute">Minute d'envoi</label>
+                <input
+                    type="number"
+                    id="report_schedule_minute"
+                    name="report_schedule_minute"
+                    min="0"
+                    max="59"
+                    value="{{ config.report_schedule_minute if config.report_schedule_minute is not none else 30 }}"
+                >
+            </div>
+        </div>
+    </div>
+    <div>
+        <h3>Planification des vérifications</h3>
+        <p class="muted">Déclenche la vérification quotidienne des notifications.</p>
+        <div class="grid">
+            <div>
+                <label for="check_schedule_hour">Heure de vérification</label>
+                <input
+                    type="number"
+                    id="check_schedule_hour"
+                    name="check_schedule_hour"
+                    min="0"
+                    max="23"
+                    value="{{ config.check_schedule_hour if config.check_schedule_hour is not none else 9 }}"
+                >
+            </div>
+            <div>
+                <label for="check_schedule_minute">Minute de vérification</label>
+                <input
+                    type="number"
+                    id="check_schedule_minute"
+                    name="check_schedule_minute"
+                    min="0"
+                    max="59"
+                    value="{{ config.check_schedule_minute if config.check_schedule_minute is not none else 0 }}"
+                >
+            </div>
+        </div>
     </div>
     <div>
         <h3>Créneau d'analyse</h3>

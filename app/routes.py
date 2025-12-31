@@ -32,6 +32,11 @@ from .scheduler import configure_jobs
 
 bp = Blueprint("main", __name__)
 
+DEFAULT_CHECK_SCHEDULE_HOUR = 9
+DEFAULT_CHECK_SCHEDULE_MINUTE = 0
+DEFAULT_REPORT_SCHEDULE_HOUR = 9
+DEFAULT_REPORT_SCHEDULE_MINUTE = 30
+
 
 def login_required(view):
     @wraps(view)
@@ -49,6 +54,14 @@ def _parse_hour(value: str | None, default: int) -> int:
     except ValueError:
         return default
     return max(0, min(23, parsed))
+
+
+def _parse_minute(value: str | None, default: int) -> int:
+    try:
+        parsed = int(value) if value is not None else default
+    except ValueError:
+        return default
+    return max(0, min(59, parsed))
 
 
 @bp.before_app_request
@@ -246,6 +259,38 @@ def settings():
         recipients = parse_report_recipients(raw_recipients)
         config.report_recipients = ", ".join(recipients) if recipients else None
         config.auto_report_enabled = request.form.get("auto_report_enabled") == "on"
+        check_schedule_hour_default = (
+            config.check_schedule_hour
+            if config.check_schedule_hour is not None
+            else DEFAULT_CHECK_SCHEDULE_HOUR
+        )
+        check_schedule_minute_default = (
+            config.check_schedule_minute
+            if config.check_schedule_minute is not None
+            else DEFAULT_CHECK_SCHEDULE_MINUTE
+        )
+        report_schedule_hour_default = (
+            config.report_schedule_hour
+            if config.report_schedule_hour is not None
+            else DEFAULT_REPORT_SCHEDULE_HOUR
+        )
+        report_schedule_minute_default = (
+            config.report_schedule_minute
+            if config.report_schedule_minute is not None
+            else DEFAULT_REPORT_SCHEDULE_MINUTE
+        )
+        config.check_schedule_hour = _parse_hour(
+            request.form.get("check_schedule_hour"), check_schedule_hour_default
+        )
+        config.check_schedule_minute = _parse_minute(
+            request.form.get("check_schedule_minute"), check_schedule_minute_default
+        )
+        config.report_schedule_hour = _parse_hour(
+            request.form.get("report_schedule_hour"), report_schedule_hour_default
+        )
+        config.report_schedule_minute = _parse_minute(
+            request.form.get("report_schedule_minute"), report_schedule_minute_default
+        )
         start_hour_default = (
             config.check_window_start_hour
             if config.check_window_start_hour is not None
