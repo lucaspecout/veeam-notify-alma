@@ -51,7 +51,7 @@ class Client(db.Model):
 
 class EmailConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    auth_mode = db.Column(db.String(32), default="password", nullable=False)
+    auth_mode = db.Column(db.String(32), default="microsoft_oauth2", nullable=False)
     imap_host = db.Column(db.String(256))
     imap_port = db.Column(db.Integer, default=993)
     imap_username = db.Column(db.String(256))
@@ -82,7 +82,7 @@ class EmailConfig(db.Model):
         instance = cls.query.first()
         if not instance:
             instance = cls(
-                auth_mode="password",
+                auth_mode="microsoft_oauth2",
                 imap_port=993,
                 use_ssl=True,
                 check_schedule_hour=9,
