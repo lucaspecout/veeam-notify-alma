@@ -7,6 +7,7 @@ from sqlalchemy.engine import Engine
 def run_migrations(engine: Engine) -> None:
     ensure_client_subject_columns(engine)
     ensure_email_config_report_columns(engine)
+    ensure_email_config_auth_columns(engine)
 
 
 def ensure_client_subject_columns(engine: Engine) -> None:
@@ -122,4 +123,36 @@ def ensure_email_config_report_columns(engine: Engine) -> None:
                     "ALTER TABLE email_config "
                     "ADD COLUMN check_window_end_hour INTEGER DEFAULT 9 NOT NULL"
                 )
+            )
+
+
+def ensure_email_config_auth_columns(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "email_config" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("email_config")}
+
+    with engine.begin() as connection:
+        if "auth_mode" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE email_config "
+                    "ADD COLUMN auth_mode VARCHAR(32) DEFAULT 'password' NOT NULL"
+                )
+            )
+
+        if "ms_tenant_id" not in columns:
+            connection.execute(
+                text("ALTER TABLE email_config ADD COLUMN ms_tenant_id VARCHAR(128)")
+            )
+
+        if "ms_client_id" not in columns:
+            connection.execute(
+                text("ALTER TABLE email_config ADD COLUMN ms_client_id VARCHAR(128)")
+            )
+
+        if "ms_client_secret" not in columns:
+            connection.execute(
+                text("ALTER TABLE email_config ADD COLUMN ms_client_secret VARCHAR(512)")
             )

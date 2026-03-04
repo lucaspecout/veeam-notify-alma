@@ -2,6 +2,15 @@
 {% block content %}
 <h2>Paramètres de connexion</h2>
 <form method="post" class="card grid">
+    <div class="full-width">
+        <h3>Type d'authentification</h3>
+        <label for="auth_mode">Méthode</label>
+        <select id="auth_mode" name="auth_mode">
+            <option value="password" {% if (config.auth_mode or 'password') == 'password' %}selected{% endif %}>Mot de passe (classique)</option>
+            <option value="microsoft_oauth2" {% if (config.auth_mode or 'password') == 'microsoft_oauth2' %}selected{% endif %}>Microsoft OAuth2 (modern auth)</option>
+        </select>
+        <p class="muted">Pour Microsoft 365, choisissez OAuth2 et renseignez les informations Azure AD ci-dessous.</p>
+    </div>
     <div>
         <h3>IMAP</h3>
         <label for="imap_host">Serveur IMAP</label>
@@ -18,7 +27,7 @@
         <input type="text" id="imap_username" name="imap_username" value="{{ config.imap_username or '' }}" required>
 
         <label for="imap_password">Mot de passe IMAP</label>
-        <input type="password" id="imap_password" name="imap_password" value="{{ config.imap_password or '' }}" required>
+        <input type="password" id="imap_password" name="imap_password" value="{{ config.imap_password or '' }}">
     </div>
     <div>
         <h3>SMTP (optionnel)</h3>
@@ -35,6 +44,19 @@
 
         <label for="smtp_password">Mot de passe SMTP</label>
         <input type="password" id="smtp_password" name="smtp_password" value="{{ config.smtp_password or '' }}">
+    </div>
+    <div>
+        <h3>Microsoft OAuth2</h3>
+        <label for="ms_tenant_id">Tenant ID</label>
+        <input type="text" id="ms_tenant_id" name="ms_tenant_id" value="{{ config.ms_tenant_id or '' }}">
+
+        <label for="ms_client_id">Client ID</label>
+        <input type="text" id="ms_client_id" name="ms_client_id" value="{{ config.ms_client_id or '' }}">
+
+        <label for="ms_client_secret">Client secret</label>
+        <input type="password" id="ms_client_secret" name="ms_client_secret" value="{{ config.ms_client_secret or '' }}">
+
+        <p class="muted">Scope utilisé: <code>https://outlook.office365.com/.default</code>. L'application Azure doit disposer des permissions IMAP/SMTP adaptées.</p>
     </div>
     <div>
         <h3>Rapports</h3>

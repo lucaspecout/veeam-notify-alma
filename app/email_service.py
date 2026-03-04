@@ -1,9 +1,14 @@
+import base64
 import email
 import html
 import imaplib
+import json
 import os
 import re
 import smtplib
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
 from email.header import decode_header
 from email.message import EmailMessage
@@ -25,6 +30,72 @@ from .models import (
 
 DEFAULT_WINDOW_START_HOUR = 16
 DEFAULT_WINDOW_END_HOUR = 9
+
+
+MICROSOFT_SCOPE = "https://outlook.office365.com/.default"
+
+
+def is_microsoft_oauth_enabled(config: EmailConfig) -> bool:
+    return (config.auth_mode or "password") == "microsoft_oauth2"
+
+
+def get_microsoft_access_token(config: EmailConfig) -> str:
+    if not config.ms_tenant_id or not config.ms_client_id or not config.ms_client_secret:
+        raise ValueError("Configuration OAuth Microsoft incomplète.")
+
+    token_url = f"https://login.microsoftonline.com/{config.ms_tenant_id}/oauth2/v2.0/token"
+    payload = urllib.parse.urlencode(
+        {
+            "grant_type": "client_credentials",
+            "client_id": config.ms_client_id,
+            "client_secret": config.ms_client_secret,
+            "scope": MICROSOFT_SCOPE,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(token_url, data=payload, method="POST")
+    request.add_header("Content-Type", "application/x-www-form-urlencoded")
+
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="ignore")
+        raise ValueError(f"Token Microsoft refusé ({exc.code}): {details}") from exc
+    except urllib.error.URLError as exc:
+        raise ValueError(f"Impossible de joindre Microsoft Identity: {exc.reason}") from exc
+
+    data = json.loads(body)
+    token = data.get("access_token")
+    if not token:
+        raise ValueError("Réponse Microsoft sans access_token.")
+    return token
+
+
+def build_xoauth2_payload(username: str, access_token: str) -> str:
+    return f"user={username}\x01auth=Bearer {access_token}\x01\x01"
+
+
+def imap_authenticate(mail: imaplib.IMAP4, config: EmailConfig) -> None:
+    if is_microsoft_oauth_enabled(config):
+        access_token = get_microsoft_access_token(config)
+        payload = build_xoauth2_payload(config.imap_username or "", access_token)
+        mail.authenticate("XOAUTH2", lambda _: payload)
+        return
+
+    mail.login(config.imap_username, config.imap_password)
+
+
+def smtp_authenticate(server: smtplib.SMTP, config: EmailConfig) -> None:
+    if is_microsoft_oauth_enabled(config):
+        access_token = get_microsoft_access_token(config)
+        payload = build_xoauth2_payload(config.smtp_username or "", access_token)
+        auth_string = base64.b64encode(payload.encode("utf-8")).decode("ascii")
+        code, response = server.docmd("AUTH", f"XOAUTH2 {auth_string}")
+        if code not in (235, 250):
+            raise smtplib.SMTPAuthenticationError(code, response)
+        return
+
+    server.login(config.smtp_username, config.smtp_password)
 
 
 def _sanitize_hour(value: int | None, default: int) -> int:
@@ -151,7 +222,8 @@ def run_email_checks(app=None):
         end_time_target = now.replace(hour=end_hour, minute=0, second=0, microsecond=0)
         end_time = end_time_target if end_time_target < now else now
 
-        if not config.imap_host or not config.imap_username or not config.imap_password:
+        missing_imap_password = (not is_microsoft_oauth_enabled(config)) and (not config.imap_password)
+        if not config.imap_host or not config.imap_username or missing_imap_password:
             for client in clients:
                 client.last_status = STATUS_MISSING
                 client.last_checked_at = now
@@ -167,7 +239,7 @@ def run_email_checks(app=None):
                 mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port)
             else:
                 mail = imaplib.IMAP4(config.imap_host, config.imap_port)
-            mail.login(config.imap_username, config.imap_password)
+            imap_authenticate(mail, config)
             mail.select("INBOX")
             date_filter = start_time.strftime("%d-%b-%Y")
             status, search_data = mail.search(None, f'(SINCE "{date_filter}")')
@@ -364,9 +436,10 @@ def send_status_report(app=None) -> tuple[bool, str]:
             add_log(message, level="warning")
             return False, message
 
+        missing_smtp_password = (not is_microsoft_oauth_enabled(config)) and (not config.smtp_password)
         missing_smtp = not (
-            config.smtp_host and config.smtp_port and config.smtp_username and config.smtp_password
-        )
+            config.smtp_host and config.smtp_port and config.smtp_username
+        ) or missing_smtp_password
         if missing_smtp:
             message = "Configuration SMTP incomplète pour l'envoi du rapport."
             add_log(message, level="error")
@@ -395,7 +468,7 @@ def send_status_report(app=None) -> tuple[bool, str]:
                     server.ehlo()
                     server.starttls()
                     server.ehlo()
-            server.login(config.smtp_username, config.smtp_password)
+            smtp_authenticate(server, config)
             server.send_message(msg)
             add_log(f"Rapport envoyé à {len(recipients)} destinataire(s).")
             return True, "Rapport envoyé avec succès."
