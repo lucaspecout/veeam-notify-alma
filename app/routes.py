@@ -1,7 +1,9 @@
+import os
 import csv
 import imaplib
 import io
 import smtplib
+import urllib.parse
 from functools import wraps
 
 from flask import (
@@ -23,11 +25,14 @@ from .email_service import (
     DEFAULT_WINDOW_START_HOUR,
     format_window_label,
     imap_authenticate,
+    MICROSOFT_USER_SCOPE,
     is_microsoft_oauth_enabled,
     parse_report_recipients,
     run_email_checks,
     send_status_report,
     smtp_authenticate,
+    _store_oauth_token,
+    _request_microsoft_token,
 )
 from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
 from .scheduler import configure_jobs
@@ -244,6 +249,74 @@ def import_clients():
     return redirect(url_for("main.index"))
 
 
+@bp.route("/settings/microsoft/connect", methods=["POST"])
+@login_required
+def microsoft_connect():
+    config = EmailConfig.get_singleton()
+    if not config.ms_tenant_id or not config.ms_client_id:
+        flash("Renseignez Tenant ID et Client ID avant de vous connecter à Microsoft 365.", "error")
+        return redirect(url_for("main.settings"))
+
+    redirect_uri = url_for("main.microsoft_callback", _external=True)
+    state = session.get("ms_oauth_state") or os.urandom(24).hex()
+    session["ms_oauth_state"] = state
+    auth_params = {
+        "client_id": config.ms_client_id,
+        "response_type": "code",
+        "redirect_uri": redirect_uri,
+        "response_mode": "query",
+        "scope": MICROSOFT_USER_SCOPE,
+        "state": state,
+        "prompt": "select_account",
+    }
+    authorize_url = (
+        f"https://login.microsoftonline.com/{config.ms_tenant_id}/oauth2/v2.0/authorize?"
+        f"{urllib.parse.urlencode(auth_params)}"
+    )
+    return redirect(authorize_url)
+
+
+@bp.route("/settings/microsoft/callback", methods=["GET"])
+@login_required
+def microsoft_callback():
+    config = EmailConfig.get_singleton()
+    expected_state = session.pop("ms_oauth_state", None)
+    received_state = request.args.get("state")
+    if not expected_state or expected_state != received_state:
+        flash("Connexion Microsoft refusée: état OAuth invalide.", "error")
+        return redirect(url_for("main.settings"))
+
+    error = request.args.get("error")
+    if error:
+        description = request.args.get("error_description", error)
+        flash(f"Connexion Microsoft annulée: {description}", "error")
+        return redirect(url_for("main.settings"))
+
+    code = request.args.get("code")
+    if not code:
+        flash("Connexion Microsoft échouée: code d'autorisation manquant.", "error")
+        return redirect(url_for("main.settings"))
+
+    try:
+        token_data = _request_microsoft_token(
+            config,
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "scope": MICROSOFT_USER_SCOPE,
+                "redirect_uri": url_for("main.microsoft_callback", _external=True),
+            },
+        )
+        _store_oauth_token(config, token_data)
+        add_log(f"Connexion Microsoft 365 validée par {g.user.username}.")
+        flash("Compte Microsoft 365 connecté. Les autorisations OAuth sont validées.", "success")
+    except Exception as exc:  # noqa: BLE001
+        add_log(f"Connexion Microsoft 365 échouée: {exc}", level="error")
+        flash(f"Connexion Microsoft échouée: {exc}", "error")
+
+    return redirect(url_for("main.settings"))
+
+
 @bp.route("/settings", methods=["GET", "POST"])
 @login_required
 def settings():
@@ -319,7 +392,11 @@ def settings():
         add_log(f"Configuration e-mail mise à jour par {g.user.username}.")
         flash("Configuration mise à jour.", "success")
         return redirect(url_for("main.settings"))
-    return render_template("settings.html", config=config)
+    return render_template(
+        "settings.html",
+        config=config,
+        microsoft_connected=bool(config.ms_refresh_token or config.ms_access_token),
+    )
 
 
 @bp.route("/settings/test-imap", methods=["POST"])
