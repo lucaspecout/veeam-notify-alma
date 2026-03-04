@@ -233,7 +233,7 @@ def microsoft_connect():
         flash("Renseignez Tenant ID et Client ID avant de vous connecter à Microsoft 365.", "error")
         return redirect(url_for("main.settings"))
 
-    redirect_uri = url_for("main.microsoft_callback", _external=True)
+    redirect_uri = url_for("main.microsoft_callback", _external=True, _scheme="https")
     state = session.get("ms_oauth_state") or os.urandom(24).hex()
     session["ms_oauth_state"] = state
     auth_params = {
@@ -280,7 +280,7 @@ def microsoft_callback():
                 "grant_type": "authorization_code",
                 "code": code,
                 "scope": MICROSOFT_USER_SCOPE,
-                "redirect_uri": url_for("main.microsoft_callback", _external=True),
+                "redirect_uri": url_for("main.microsoft_callback", _external=True, _scheme="https"),
             },
         )
         _store_oauth_token(config, token_data)
