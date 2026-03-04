@@ -4,9 +4,18 @@
     <div class="table-actions">
         <h2>Journal des actions</h2>
     </div>
+
+    <div class="log-stats">
+        <span class="badge status-info">Total: {{ entries|length }}</span>
+        <span class="badge status-ok">INFO: {{ level_counts.get('INFO', 0) }}</span>
+        <span class="badge status-warning">WARNING: {{ level_counts.get('WARNING', 0) }}</span>
+        <span class="badge status-error">ERROR: {{ level_counts.get('ERROR', 0) }}</span>
+    </div>
+
     <table>
         <thead>
         <tr>
+            <th>#</th>
             <th>Date</th>
             <th>Niveau</th>
             <th>Message</th>
@@ -15,13 +24,14 @@
         <tbody>
         {% for entry in entries %}
             <tr>
+                <td>{{ entry.id }}</td>
                 <td>{{ entry.created_at.strftime('%d/%m/%Y %H:%M:%S') }}</td>
                 <td><span class="badge status-{{ entry.level.lower() }}">{{ entry.level }}</span></td>
                 <td>{{ entry.message }}</td>
             </tr>
         {% else %}
             <tr>
-                <td colspan="3" class="empty">Aucune entrée pour le moment.</td>
+                <td colspan="4" class="empty">Aucune entrée pour le moment.</td>
             </tr>
         {% endfor %}
         </tbody>
