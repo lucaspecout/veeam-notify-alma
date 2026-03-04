@@ -1,62 +1,10 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Paramètres de connexion</h2>
+<h2>Connexion Microsoft 365</h2>
+
 <form method="post" class="card grid">
     <div class="full-width">
-        <h3>Type d'authentification</h3>
-        <label for="auth_mode">Méthode</label>
-        <select id="auth_mode" name="auth_mode">
-            <option value="password" {% if (config.auth_mode or 'password') == 'password' %}selected{% endif %}>Mot de passe (classique)</option>
-            <option value="microsoft_oauth2" {% if (config.auth_mode or 'password') == 'microsoft_oauth2' %}selected{% endif %}>Microsoft OAuth2 (modern auth)</option>
-        </select>
-        <p class="muted">Pour Microsoft 365, choisissez OAuth2 et renseignez les informations Azure AD ci-dessous.</p>
-    </div>
-    <div>
-        <h3>IMAP</h3>
-        <label for="imap_host">Serveur IMAP</label>
-        <input type="text" id="imap_host" name="imap_host" value="{{ config.imap_host or '' }}" required>
-
-        <label for="imap_port">Port IMAP</label>
-        <input type="number" id="imap_port" name="imap_port" value="{{ config.imap_port or 993 }}">
-
-        <label>
-            <input type="checkbox" name="use_ssl" {% if config.use_ssl %}checked{% endif %}> Utiliser SSL
-        </label>
-
-        <label for="imap_username">Utilisateur IMAP</label>
-        <input type="text" id="imap_username" name="imap_username" value="{{ config.imap_username or '' }}" required>
-
-        <label for="imap_password">Mot de passe IMAP</label>
-        <input type="password" id="imap_password" name="imap_password" value="{{ config.imap_password or '' }}">
-    </div>
-    <div>
-        <h3>SMTP (optionnel)</h3>
-        <label for="smtp_host">Serveur SMTP</label>
-        <input type="text" id="smtp_host" name="smtp_host" value="{{ config.smtp_host or '' }}">
-
-        <label for="smtp_port">Port SMTP</label>
-        <input type="number" id="smtp_port" name="smtp_port" value="{{ config.smtp_port or '' }}">
-
-        <p class="muted">Avec l'option SSL activée, le port 465 est utilisé en SSL direct, les autres ports passent en STARTTLS.</p>
-
-        <label for="smtp_username">Utilisateur SMTP</label>
-        <input type="text" id="smtp_username" name="smtp_username" value="{{ config.smtp_username or '' }}">
-
-        <label for="smtp_password">Mot de passe SMTP</label>
-        <input type="password" id="smtp_password" name="smtp_password" value="{{ config.smtp_password or '' }}">
-    </div>
-    <div>
-        <h3>Microsoft OAuth2</h3>
-        <label for="ms_tenant_id">Tenant ID</label>
-        <input type="text" id="ms_tenant_id" name="ms_tenant_id" value="{{ config.ms_tenant_id or '' }}">
-
-        <label for="ms_client_id">Client ID</label>
-        <input type="text" id="ms_client_id" name="ms_client_id" value="{{ config.ms_client_id or '' }}">
-
-        <label for="ms_client_secret">Client secret (optionnel)</label>
-        <input type="password" id="ms_client_secret" name="ms_client_secret" value="{{ config.ms_client_secret or '' }}">
-
-        <p class="muted">Cliquez sur le bouton ci-dessous pour ouvrir la connexion Microsoft 365 et valider les autorisations une fois pour toutes.</p>
+        <p class="muted">Cette page utilise uniquement l'authentification avec le bouton Microsoft 365.</p>
         <p class="muted">Statut :
             {% if microsoft_connected %}
                 <span class="oauth-connected">Connecté à Microsoft 365 ✅</span>
@@ -64,185 +12,33 @@
                 <span class="oauth-disconnected">Aucun compte connecté</span>
             {% endif %}
         </p>
-        <button type="submit" formaction="{{ url_for('main.microsoft_connect') }}" formmethod="post" class="button secondary oauth-button">
-            Se connecter avec Microsoft 365
-        </button>
-
-        <p class="muted">Scopes utilisateur : <code>IMAP.AccessAsUser.All</code>, <code>SMTP.Send</code>, <code>offline_access</code>. Si vous préférez une connexion application (client secret), le scope <code>https://outlook.office365.com/.default</code> reste supporté.</p>
     </div>
+
     <div>
-        <h3>Rapports</h3>
-        <label for="report_recipients">Destinataires du rapport</label>
-        <textarea id="report_recipients" name="report_recipients" rows="3" placeholder="email1@example.com\nemail2@example.com">{{ config.report_recipients or '' }}</textarea>
-        <p class="muted">Vous pouvez saisir plusieurs adresses, séparées par des virgules, des points-virgules ou des retours à la ligne.</p>
+        <label for="ms_tenant_id">Tenant ID</label>
+        <input type="text" id="ms_tenant_id" name="ms_tenant_id" value="{{ config.ms_tenant_id or '' }}" required>
 
-        <label>
-            <input type="checkbox" name="auto_report_enabled" {% if config.auto_report_enabled %}checked{% endif %}>
-            Programmer un envoi automatique chaque jour
-        </label>
-        <p class="muted">Utilise la configuration SMTP ci-dessus.</p>
+        <label for="ms_client_id">Client ID</label>
+        <input type="text" id="ms_client_id" name="ms_client_id" value="{{ config.ms_client_id or '' }}" required>
 
-        <div class="grid">
-            <div>
-                <label for="report_schedule_hour">Heure d'envoi</label>
-                <input
-                    type="number"
-                    id="report_schedule_hour"
-                    name="report_schedule_hour"
-                    min="0"
-                    max="23"
-                    value="{{ config.report_schedule_hour if config.report_schedule_hour is not none else 9 }}"
-                >
-            </div>
-            <div>
-                <label for="report_schedule_minute">Minute d'envoi</label>
-                <input
-                    type="number"
-                    id="report_schedule_minute"
-                    name="report_schedule_minute"
-                    min="0"
-                    max="59"
-                    value="{{ config.report_schedule_minute if config.report_schedule_minute is not none else 30 }}"
-                >
-            </div>
-        </div>
+        <label for="ms_client_secret">Client secret (optionnel)</label>
+        <input type="password" id="ms_client_secret" name="ms_client_secret" value="{{ config.ms_client_secret or '' }}">
+
+        <p class="muted">Scopes : <code>IMAP.AccessAsUser.All</code>, <code>SMTP.Send</code>, <code>offline_access</code>.</p>
     </div>
-    <div>
-        <h3>Planification des vérifications</h3>
-        <p class="muted">Déclenche la vérification quotidienne des notifications.</p>
-        <div class="grid">
-            <div>
-                <label for="check_schedule_hour">Heure de vérification</label>
-                <input
-                    type="number"
-                    id="check_schedule_hour"
-                    name="check_schedule_hour"
-                    min="0"
-                    max="23"
-                    value="{{ config.check_schedule_hour if config.check_schedule_hour is not none else 9 }}"
-                >
-            </div>
-            <div>
-                <label for="check_schedule_minute">Minute de vérification</label>
-                <input
-                    type="number"
-                    id="check_schedule_minute"
-                    name="check_schedule_minute"
-                    min="0"
-                    max="59"
-                    value="{{ config.check_schedule_minute if config.check_schedule_minute is not none else 0 }}"
-                >
-            </div>
-        </div>
-    </div>
-    <div>
-        <h3>Créneau d'analyse</h3>
-        <label for="check_window_start_hour">Heure de début (veille)</label>
-        <input
-            type="number"
-            id="check_window_start_hour"
-            name="check_window_start_hour"
-            min="0"
-            max="23"
-            value="{{ config.check_window_start_hour if config.check_window_start_hour is not none else 16 }}"
-        >
 
-        <label for="check_window_end_hour">Heure de fin (jour J)</label>
-        <input
-            type="number"
-            id="check_window_end_hour"
-            name="check_window_end_hour"
-            min="0"
-            max="23"
-            value="{{ config.check_window_end_hour if config.check_window_end_hour is not none else 9 }}"
-        >
-
-        <p class="muted">Fenêtre utilisée pour chercher les e-mails, par défaut de 16h la veille à 9h le jour même.</p>
-    </div>
     <div class="form-actions full-width">
         <button type="submit" class="button">Enregistrer</button>
+        <button type="submit" formaction="{{ url_for('main.microsoft_connect') }}" formmethod="post" class="button secondary oauth-button">
+            Se connecter à 365
+        </button>
+        <button type="submit" formaction="{{ url_for('main.microsoft_check_connection') }}" formmethod="post" class="button secondary">
+            Vérifier la connexion du compte
+        </button>
+        <button type="submit" formaction="{{ url_for('main.microsoft_disconnect') }}" formmethod="post" class="button secondary">
+            Se déconnecter
+        </button>
         <a class="button secondary" href="{{ url_for('main.index') }}">Retour</a>
     </div>
 </form>
-
-<h3>Tests de connexion</h3>
-<div class="grid">
-    <form method="post" action="{{ url_for('main.test_imap_connection') }}" class="card async-test-form" data-status-target="imap-status">
-        <p>Vérifie la connexion au serveur IMAP configuré.</p>
-        <div class="test-status" id="imap-status" aria-live="polite"></div>
-        <button type="submit" class="button">Tester IMAP</button>
-    </form>
-    <form method="post" action="{{ url_for('main.test_smtp_connection') }}" class="card async-test-form" data-status-target="smtp-status">
-        <p>Vérifie la connexion au serveur SMTP configuré.</p>
-        <div class="test-status" id="smtp-status" aria-live="polite"></div>
-        <button type="submit" class="button">Tester SMTP</button>
-    </form>
-</div>
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const forms = document.querySelectorAll('.async-test-form');
-
-        const setStatus = (container, message, status) => {
-            if (!container) return;
-            container.classList.remove('success', 'error', 'loading');
-            if (status) container.classList.add(status);
-            container.innerHTML = message;
-        };
-
-        forms.forEach((form) => {
-            const statusTarget = form.dataset.statusTarget;
-            const statusContainer = document.getElementById(statusTarget);
-            const submitButton = form.querySelector('button[type="submit"]');
-
-            form.addEventListener('submit', (event) => {
-                event.preventDefault();
-                if (statusContainer) {
-                    setStatus(
-                        statusContainer,
-                        '<span class="spinner"></span> Test en cours…',
-                        'loading',
-                    );
-                }
-                if (submitButton) {
-                    submitButton.disabled = true;
-                }
-
-                const controller = new AbortController();
-                const abortTimeout = setTimeout(() => controller.abort(), 15000);
-
-                fetch(form.action, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    signal: controller.signal,
-                })
-                    .then(async (response) => {
-                        clearTimeout(abortTimeout);
-                        let payload;
-                        try {
-                            payload = await response.json();
-                        } catch (error) {
-                            throw new Error('Réponse inattendue du serveur.');
-                        }
-
-                        const status = payload.success ? 'success' : 'error';
-                        setStatus(statusContainer, payload.message, status);
-                    })
-                    .catch((error) => {
-                        const message = error.name === 'AbortError'
-                            ? 'Test annulé : délai dépassé.'
-                            : error.message || 'Le test a échoué.';
-                        setStatus(statusContainer, message, 'error');
-                    })
-                    .finally(() => {
-                        if (submitButton) {
-                            submitButton.disabled = false;
-                        }
-                    });
-            });
-        });
-    });
-</script>
 {% endblock %}

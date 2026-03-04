@@ -8,7 +8,6 @@ from functools import wraps
 
 from flask import (
     Blueprint,
-    current_app,
     flash,
     g,
     jsonify,
@@ -21,13 +20,11 @@ from flask import (
 
 from . import db
 from .email_service import (
-    DEFAULT_WINDOW_END_HOUR,
-    DEFAULT_WINDOW_START_HOUR,
     format_window_label,
+    get_microsoft_access_token,
     imap_authenticate,
     MICROSOFT_USER_SCOPE,
     is_microsoft_oauth_enabled,
-    parse_report_recipients,
     run_email_checks,
     send_status_report,
     smtp_authenticate,
@@ -35,15 +32,10 @@ from .email_service import (
     _request_microsoft_token,
 )
 from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
-from .scheduler import configure_jobs
 
 
 bp = Blueprint("main", __name__)
 
-DEFAULT_CHECK_SCHEDULE_HOUR = 9
-DEFAULT_CHECK_SCHEDULE_MINUTE = 0
-DEFAULT_REPORT_SCHEDULE_HOUR = 9
-DEFAULT_REPORT_SCHEDULE_MINUTE = 30
 
 
 def login_required(view):
@@ -54,22 +46,6 @@ def login_required(view):
         return view(**kwargs)
 
     return wrapped_view
-
-
-def _parse_hour(value: str | None, default: int) -> int:
-    try:
-        parsed = int(value) if value is not None else default
-    except ValueError:
-        return default
-    return max(0, min(23, parsed))
-
-
-def _parse_minute(value: str | None, default: int) -> int:
-    try:
-        parsed = int(value) if value is not None else default
-    except ValueError:
-        return default
-    return max(0, min(59, parsed))
 
 
 @bp.before_app_request
@@ -317,80 +293,47 @@ def microsoft_callback():
     return redirect(url_for("main.settings"))
 
 
+@bp.route("/settings/microsoft/check", methods=["POST"])
+@login_required
+def microsoft_check_connection():
+    config = EmailConfig.get_singleton()
+    try:
+        get_microsoft_access_token(config)
+        message = "Connexion Microsoft 365 valide."
+        add_log(f"{message} Vérifiée par {g.user.username}.")
+        flash(message, "success")
+    except Exception as exc:  # noqa: BLE001
+        message = f"Connexion Microsoft 365 invalide : {exc}"
+        add_log(message, level="error")
+        flash(message, "error")
+    return redirect(url_for("main.settings"))
+
+
+@bp.route("/settings/microsoft/disconnect", methods=["POST"])
+@login_required
+def microsoft_disconnect():
+    config = EmailConfig.get_singleton()
+    config.ms_access_token = None
+    config.ms_refresh_token = None
+    config.ms_token_expires_at = None
+    db.session.commit()
+    add_log(f"Compte Microsoft 365 déconnecté par {g.user.username}.")
+    flash("Compte Microsoft 365 déconnecté.", "success")
+    return redirect(url_for("main.settings"))
+
+
 @bp.route("/settings", methods=["GET", "POST"])
 @login_required
 def settings():
     config = EmailConfig.get_singleton()
     if request.method == "POST":
-        config.auth_mode = request.form.get("auth_mode") or "password"
-        config.imap_host = request.form.get("imap_host") or None
-        config.imap_port = int(request.form.get("imap_port") or 993)
-        config.imap_username = request.form.get("imap_username") or None
-        config.imap_password = request.form.get("imap_password") or None
-        config.smtp_host = request.form.get("smtp_host") or None
-        config.smtp_port = int(request.form.get("smtp_port") or 0) or None
-        config.smtp_username = request.form.get("smtp_username") or None
-        config.smtp_password = request.form.get("smtp_password") or None
+        config.auth_mode = "microsoft_oauth2"
         config.ms_tenant_id = request.form.get("ms_tenant_id") or None
         config.ms_client_id = request.form.get("ms_client_id") or None
         config.ms_client_secret = request.form.get("ms_client_secret") or None
-        config.use_ssl = request.form.get("use_ssl") == "on"
-        raw_recipients = request.form.get("report_recipients", "")
-        recipients = parse_report_recipients(raw_recipients)
-        config.report_recipients = ", ".join(recipients) if recipients else None
-        config.auto_report_enabled = request.form.get("auto_report_enabled") == "on"
-        check_schedule_hour_default = (
-            config.check_schedule_hour
-            if config.check_schedule_hour is not None
-            else DEFAULT_CHECK_SCHEDULE_HOUR
-        )
-        check_schedule_minute_default = (
-            config.check_schedule_minute
-            if config.check_schedule_minute is not None
-            else DEFAULT_CHECK_SCHEDULE_MINUTE
-        )
-        report_schedule_hour_default = (
-            config.report_schedule_hour
-            if config.report_schedule_hour is not None
-            else DEFAULT_REPORT_SCHEDULE_HOUR
-        )
-        report_schedule_minute_default = (
-            config.report_schedule_minute
-            if config.report_schedule_minute is not None
-            else DEFAULT_REPORT_SCHEDULE_MINUTE
-        )
-        config.check_schedule_hour = _parse_hour(
-            request.form.get("check_schedule_hour"), check_schedule_hour_default
-        )
-        config.check_schedule_minute = _parse_minute(
-            request.form.get("check_schedule_minute"), check_schedule_minute_default
-        )
-        config.report_schedule_hour = _parse_hour(
-            request.form.get("report_schedule_hour"), report_schedule_hour_default
-        )
-        config.report_schedule_minute = _parse_minute(
-            request.form.get("report_schedule_minute"), report_schedule_minute_default
-        )
-        start_hour_default = (
-            config.check_window_start_hour
-            if config.check_window_start_hour is not None
-            else DEFAULT_WINDOW_START_HOUR
-        )
-        end_hour_default = (
-            config.check_window_end_hour
-            if config.check_window_end_hour is not None
-            else DEFAULT_WINDOW_END_HOUR
-        )
-        config.check_window_start_hour = _parse_hour(
-            request.form.get("check_window_start_hour"), start_hour_default
-        )
-        config.check_window_end_hour = _parse_hour(
-            request.form.get("check_window_end_hour"), end_hour_default
-        )
         db.session.commit()
-        configure_jobs(current_app._get_current_object())
-        add_log(f"Configuration e-mail mise à jour par {g.user.username}.")
-        flash("Configuration mise à jour.", "success")
+        add_log(f"Configuration Microsoft OAuth mise à jour par {g.user.username}.")
+        flash("Configuration Microsoft 365 mise à jour.", "success")
         return redirect(url_for("main.settings"))
     return render_template(
         "settings.html",
