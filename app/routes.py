@@ -24,6 +24,7 @@ from .email_service import (
     decode_subject,
     format_window_label,
     get_microsoft_access_token,
+    get_microsoft_token_diagnostics,
     imap_authenticate,
     MICROSOFT_USER_SCOPE,
     is_microsoft_oauth_enabled,
