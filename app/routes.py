@@ -322,11 +322,7 @@ def microsoft_test_read_latest_email():
         return redirect(url_for("main.settings"))
 
     mail = None
-    token_diag = {"mode": "none", "aud": "", "scp": "", "roles": "", "identity": ""}
     try:
-        if is_microsoft_oauth_enabled(config):
-            token_diag = get_microsoft_token_diagnostics(config)
-
         if config.use_ssl:
             mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port, timeout=10)
         else:
@@ -366,28 +362,8 @@ def microsoft_test_read_latest_email():
         flash(message, "success")
     except Exception as exc:  # noqa: BLE001
         message = f"Échec lecture du dernier e-mail : {exc}"
-        hint = ""
-        if "AUTHENTICATE failed" in str(exc):
-            if token_diag.get("mode") == "application":
-                hint = (
-                    " Token applicatif détecté. Vérifiez IMAP.AccessAsApp + attribution d'accès"
-                    " à la boîte (service principal Exchange + permissions mailbox)."
-                )
-            else:
-                hint = (
-                    " Vérifiez IMAP activé, permission déléguée Office 365 Exchange Online"
-                    " IMAP.AccessAsUser.All, consentement admin, et reconnectez le compte 365."
-                )
-        diag_text = (
-            f" mode_token={token_diag.get('mode') or 'none'}"
-            f" aud={token_diag.get('aud') or '-'}"
-            f" scp={token_diag.get('scp') or '-'}"
-            f" roles={token_diag.get('roles') or '-'}"
-            f" identity={token_diag.get('identity') or '-'}"
-            f" imap_username={(config.imap_username or '').strip() or '-'}"
-        )
-        add_log(message + hint + diag_text, level="error")
-        flash(message + hint, "error")
+        add_log(message, level="error")
+        flash(message, "error")
     finally:
         if mail:
             try:
