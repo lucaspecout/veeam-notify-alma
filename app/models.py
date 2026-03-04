@@ -51,6 +51,7 @@ class Client(db.Model):
 
 class EmailConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    auth_mode = db.Column(db.String(32), default="password", nullable=False)
     imap_host = db.Column(db.String(256))
     imap_port = db.Column(db.Integer, default=993)
     imap_username = db.Column(db.String(256))
@@ -59,6 +60,9 @@ class EmailConfig(db.Model):
     smtp_port = db.Column(db.Integer)
     smtp_username = db.Column(db.String(256))
     smtp_password = db.Column(db.String(256))
+    ms_tenant_id = db.Column(db.String(128))
+    ms_client_id = db.Column(db.String(128))
+    ms_client_secret = db.Column(db.String(512))
     use_ssl = db.Column(db.Boolean, default=True)
     report_recipients = db.Column(db.Text)
     auto_report_enabled = db.Column(db.Boolean, default=False, nullable=False)
@@ -75,6 +79,7 @@ class EmailConfig(db.Model):
         instance = cls.query.first()
         if not instance:
             instance = cls(
+                auth_mode="password",
                 imap_port=993,
                 use_ssl=True,
                 check_schedule_hour=9,

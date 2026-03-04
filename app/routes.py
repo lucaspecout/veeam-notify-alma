@@ -22,9 +22,12 @@ from .email_service import (
     DEFAULT_WINDOW_END_HOUR,
     DEFAULT_WINDOW_START_HOUR,
     format_window_label,
+    imap_authenticate,
+    is_microsoft_oauth_enabled,
     parse_report_recipients,
     run_email_checks,
     send_status_report,
+    smtp_authenticate,
 )
 from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
 from .scheduler import configure_jobs
@@ -246,6 +249,7 @@ def import_clients():
 def settings():
     config = EmailConfig.get_singleton()
     if request.method == "POST":
+        config.auth_mode = request.form.get("auth_mode") or "password"
         config.imap_host = request.form.get("imap_host") or None
         config.imap_port = int(request.form.get("imap_port") or 993)
         config.imap_username = request.form.get("imap_username") or None
@@ -254,6 +258,9 @@ def settings():
         config.smtp_port = int(request.form.get("smtp_port") or 0) or None
         config.smtp_username = request.form.get("smtp_username") or None
         config.smtp_password = request.form.get("smtp_password") or None
+        config.ms_tenant_id = request.form.get("ms_tenant_id") or None
+        config.ms_client_id = request.form.get("ms_client_id") or None
+        config.ms_client_secret = request.form.get("ms_client_secret") or None
         config.use_ssl = request.form.get("use_ssl") == "on"
         raw_recipients = request.form.get("report_recipients", "")
         recipients = parse_report_recipients(raw_recipients)
@@ -319,7 +326,8 @@ def settings():
 @login_required
 def test_imap_connection():
     config = EmailConfig.get_singleton()
-    if not config.imap_host or not config.imap_username or not config.imap_password:
+    missing_imap_password = (not is_microsoft_oauth_enabled(config)) and (not config.imap_password)
+    if not config.imap_host or not config.imap_username or missing_imap_password:
         message = "Configuration IMAP incomplète."
         if request.accept_mimetypes.accept_json:
             return jsonify({"success": False, "message": message}), 400
@@ -332,7 +340,7 @@ def test_imap_connection():
             mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port, timeout=10)
         else:
             mail = imaplib.IMAP4(config.imap_host, config.imap_port, timeout=10)
-        mail.login(config.imap_username, config.imap_password)
+        imap_authenticate(mail, config)
         mail.select("INBOX")
         message = "Test IMAP réussi."
         add_log(f"{message} par {g.user.username}.")
@@ -359,11 +367,12 @@ def test_imap_connection():
 @login_required
 def test_smtp_connection():
     config = EmailConfig.get_singleton()
+    missing_smtp_password = (not is_microsoft_oauth_enabled(config)) and (not config.smtp_password)
     if (
         not config.smtp_host
         or not config.smtp_port
         or not config.smtp_username
-        or not config.smtp_password
+        or missing_smtp_password
     ):
         message = "Configuration SMTP incomplète."
         if request.accept_mimetypes.accept_json:
@@ -382,7 +391,7 @@ def test_smtp_connection():
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-        server.login(config.smtp_username, config.smtp_password)
+        smtp_authenticate(server, config)
         server.noop()
         message = "Test SMTP réussi."
         add_log(f"{message} par {g.user.username}.")

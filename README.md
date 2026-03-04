@@ -28,9 +28,10 @@ Variables utiles (avec valeurs par défaut si non fournies) :
 L'interface est disponible sur http://localhost:5000.
 
 ## Utilisation
-1. Rendez-vous dans "Paramètres" et renseignez les informations IMAP (et SMTP optionnel).
-2. Ajoutez des clients et définissez pour chacun l'objet attendu de l'e-mail Veeam.
-3. Le job planifié vérifie chaque jour à 9h si les messages attendus ont été reçus et déduit le statut (OK, Failed, Warning ou Non reçu). Un bouton permet de lancer une vérification manuelle immédiate.
+1. Rendez-vous dans "Paramètres" et choisissez le type d'authentification : mot de passe classique ou Microsoft OAuth2 (modern auth).
+2. Renseignez les informations IMAP (et SMTP optionnel), puis si OAuth2 est choisi : Tenant ID, Client ID et Client Secret Azure AD.
+3. Ajoutez des clients et définissez pour chacun l'objet attendu de l'e-mail Veeam.
+4. Le job planifié vérifie chaque jour à 9h si les messages attendus ont été reçus et déduit le statut (OK, Failed, Warning ou Non reçu). Un bouton permet de lancer une vérification manuelle immédiate.
 
 ## Développement local
 Installez les dépendances puis lancez l'application :
