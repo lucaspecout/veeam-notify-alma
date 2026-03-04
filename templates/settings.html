@@ -35,6 +35,9 @@
         <button type="submit" formaction="{{ url_for('main.microsoft_check_connection') }}" formmethod="post" class="button secondary">
             Vérifier la connexion du compte
         </button>
+        <button type="submit" formaction="{{ url_for('main.microsoft_test_read_latest_email') }}" formmethod="post" class="button secondary">
+            Vérifier la lecture du dernier mail
+        </button>
         <button type="submit" formaction="{{ url_for('main.microsoft_disconnect') }}" formmethod="post" class="button secondary">
             Se déconnecter
         </button>
