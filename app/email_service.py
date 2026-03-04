@@ -9,6 +9,7 @@ import smtplib
 import urllib.error
 import urllib.parse
 import urllib.request
+from binascii import Error as BinasciiError
 from datetime import datetime, timedelta, timezone
 from email.header import decode_header
 from email.message import EmailMessage
@@ -103,6 +104,64 @@ def _get_delegated_token(config: EmailConfig) -> str | None:
 
     return None
 
+
+
+
+def _decode_jwt_payload(access_token: str) -> dict:
+    try:
+        parts = access_token.split(".")
+        if len(parts) != 3:
+            return {}
+        payload = parts[1]
+        padding = "=" * (-len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(payload + padding).decode("utf-8")
+        data = json.loads(decoded)
+        return data if isinstance(data, dict) else {}
+    except (ValueError, json.JSONDecodeError, BinasciiError):
+        return {}
+
+
+def get_microsoft_token_diagnostics(config: EmailConfig) -> dict[str, str]:
+    token = None
+    mode = "none"
+
+    delegated_token = _get_delegated_token(config)
+    if delegated_token:
+        token = delegated_token
+        mode = "delegated"
+    elif config.ms_client_secret:
+        token_data = _request_microsoft_token(
+            config,
+            {
+                "grant_type": "client_credentials",
+                "scope": MICROSOFT_SCOPE,
+            },
+        )
+        token = token_data.get("access_token")
+        mode = "application"
+
+    if not token:
+        return {"mode": mode, "aud": "", "scp": "", "roles": "", "identity": ""}
+
+    claims = _decode_jwt_payload(token)
+    roles = claims.get("roles") or []
+    if isinstance(roles, list):
+        roles_str = ",".join(str(role) for role in roles)
+    else:
+        roles_str = str(roles)
+
+    return {
+        "mode": mode,
+        "aud": str(claims.get("aud") or ""),
+        "scp": str(claims.get("scp") or ""),
+        "roles": roles_str,
+        "identity": str(
+            claims.get("preferred_username")
+            or claims.get("upn")
+            or claims.get("appid")
+            or ""
+        ),
+    }
 
 def get_microsoft_access_token(config: EmailConfig) -> str:
     delegated_token = _get_delegated_token(config)

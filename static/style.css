@@ -352,3 +352,11 @@ footer {
     color: var(--danger);
     font-weight: 700;
 }
+
+
+.log-stats {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}

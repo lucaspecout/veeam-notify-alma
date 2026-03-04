@@ -1,5 +1,6 @@
 import os
 import csv
+import email
 import imaplib
 import io
 import smtplib
@@ -20,8 +21,10 @@ from flask import (
 
 from . import db
 from .email_service import (
+    decode_subject,
     format_window_label,
     get_microsoft_access_token,
+    get_microsoft_token_diagnostics,
     imap_authenticate,
     MICROSOFT_USER_SCOPE,
     is_microsoft_oauth_enabled,
@@ -309,6 +312,92 @@ def microsoft_check_connection():
     return redirect(url_for("main.settings"))
 
 
+@bp.route("/settings/microsoft/test-read-latest", methods=["POST"])
+@login_required
+def microsoft_test_read_latest_email():
+    config = EmailConfig.get_singleton()
+    missing_imap_password = (not is_microsoft_oauth_enabled(config)) and (not config.imap_password)
+    if not config.imap_host or not config.imap_username or missing_imap_password:
+        flash("Configuration IMAP incomplète.", "error")
+        return redirect(url_for("main.settings"))
+
+    mail = None
+    token_diag = {"mode": "none", "aud": "", "scp": "", "roles": "", "identity": ""}
+    try:
+        if is_microsoft_oauth_enabled(config):
+            token_diag = get_microsoft_token_diagnostics(config)
+
+        if config.use_ssl:
+            mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port, timeout=10)
+        else:
+            mail = imaplib.IMAP4(config.imap_host, config.imap_port, timeout=10)
+
+        imap_authenticate(mail, config)
+        status, _ = mail.select("INBOX")
+        if status != "OK":
+            raise RuntimeError("Impossible d'ouvrir la boîte INBOX.")
+
+        status, data = mail.search(None, "ALL")
+        if status != "OK":
+            raise RuntimeError("Impossible de lister les e-mails de la boîte.")
+
+        message_ids = data[0].split() if data and data[0] else []
+        if not message_ids:
+            message = "Connexion IMAP réussie, mais aucun e-mail trouvé dans la boîte."
+            add_log(f"{message} Vérifiée par {g.user.username}.")
+            flash(message, "success")
+            return redirect(url_for("main.settings"))
+
+        latest_id = message_ids[-1]
+        status, msg_data = mail.fetch(latest_id, "(RFC822)")
+        if status != "OK" or not msg_data or not msg_data[0]:
+            raise RuntimeError("Connexion IMAP réussie, mais impossible de lire le dernier e-mail.")
+
+        raw_email = msg_data[0][1]
+        parsed = email.message_from_bytes(raw_email)
+        subject = decode_subject(parsed.get("Subject", "(sans objet)"))
+        sender = parsed.get("From", "inconnu")
+        received_at = parsed.get("Date", "date inconnue")
+        message = (
+            "Connexion IMAP valide. Dernier e-mail lu avec succès : "
+            f"Objet '{subject}', De '{sender}', Date '{received_at}'."
+        )
+        add_log(f"Test lecture dernier e-mail réussi par {g.user.username}: {subject}")
+        flash(message, "success")
+    except Exception as exc:  # noqa: BLE001
+        message = f"Échec lecture du dernier e-mail : {exc}"
+        hint = ""
+        if "AUTHENTICATE failed" in str(exc):
+            if token_diag.get("mode") == "application":
+                hint = (
+                    " Token applicatif détecté. Vérifiez IMAP.AccessAsApp + attribution d'accès"
+                    " à la boîte (service principal Exchange + permissions mailbox)."
+                )
+            else:
+                hint = (
+                    " Vérifiez IMAP activé, permission déléguée Office 365 Exchange Online"
+                    " IMAP.AccessAsUser.All, consentement admin, et reconnectez le compte 365."
+                )
+        diag_text = (
+            f" mode_token={token_diag.get('mode') or 'none'}"
+            f" aud={token_diag.get('aud') or '-'}"
+            f" scp={token_diag.get('scp') or '-'}"
+            f" roles={token_diag.get('roles') or '-'}"
+            f" identity={token_diag.get('identity') or '-'}"
+            f" imap_username={(config.imap_username or '').strip() or '-'}"
+        )
+        add_log(message + hint + diag_text, level="error")
+        flash(message + hint, "error")
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+    return redirect(url_for("main.settings"))
+
+
 @bp.route("/settings/microsoft/disconnect", methods=["POST"])
 @login_required
 def microsoft_disconnect():
@@ -339,6 +428,7 @@ def settings():
         "settings.html",
         config=config,
         microsoft_connected=bool(config.ms_refresh_token or config.ms_access_token),
+        imap_connected_mail=(config.imap_username or "").strip() or None,
     )
 
 
@@ -476,5 +566,9 @@ def change_password():
 @bp.route("/logs")
 @login_required
 def logs():
-    entries = LogEntry.query.order_by(LogEntry.created_at.desc()).limit(200).all()
-    return render_template("logs.html", entries=entries)
+    entries = LogEntry.query.order_by(LogEntry.created_at.desc()).limit(1000).all()
+    level_counts = {"INFO": 0, "WARNING": 0, "ERROR": 0}
+    for entry in entries:
+        level = (entry.level or "INFO").upper()
+        level_counts[level] = level_counts.get(level, 0) + 1
+    return render_template("logs.html", entries=entries, level_counts=level_counts)
