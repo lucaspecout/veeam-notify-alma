@@ -12,6 +12,13 @@
                 <span class="oauth-disconnected">Aucun compte connecté</span>
             {% endif %}
         </p>
+        <p class="muted">Boîte IMAP configurée :
+            {% if imap_connected_mail %}
+                <strong>{{ imap_connected_mail }}</strong>
+            {% else %}
+                <span class="oauth-disconnected">Aucune adresse IMAP renseignée</span>
+            {% endif %}
+        </p>
     </div>
 
     <div>

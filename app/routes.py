@@ -403,6 +403,7 @@ def settings():
         "settings.html",
         config=config,
         microsoft_connected=bool(config.ms_refresh_token or config.ms_access_token),
+        imap_connected_mail=(config.imap_username or "").strip() or None,
     )
 
 
@@ -540,5 +541,9 @@ def change_password():
 @bp.route("/logs")
 @login_required
 def logs():
-    entries = LogEntry.query.order_by(LogEntry.created_at.desc()).limit(200).all()
-    return render_template("logs.html", entries=entries)
+    entries = LogEntry.query.order_by(LogEntry.created_at.desc()).limit(1000).all()
+    level_counts = {"INFO": 0, "WARNING": 0, "ERROR": 0}
+    for entry in entries:
+        level = (entry.level or "INFO").upper()
+        level_counts[level] = level_counts.get(level, 0) + 1
+    return render_template("logs.html", entries=entries, level_counts=level_counts)
