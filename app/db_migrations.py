@@ -156,3 +156,14 @@ def ensure_email_config_auth_columns(engine: Engine) -> None:
             connection.execute(
                 text("ALTER TABLE email_config ADD COLUMN ms_client_secret VARCHAR(512)")
             )
+
+        if "ms_refresh_token" not in columns:
+            connection.execute(text("ALTER TABLE email_config ADD COLUMN ms_refresh_token TEXT"))
+
+        if "ms_access_token" not in columns:
+            connection.execute(text("ALTER TABLE email_config ADD COLUMN ms_access_token TEXT"))
+
+        if "ms_token_expires_at" not in columns:
+            connection.execute(
+                text("ALTER TABLE email_config ADD COLUMN ms_token_expires_at DATETIME")
+            )

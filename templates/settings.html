@@ -53,10 +53,22 @@
         <label for="ms_client_id">Client ID</label>
         <input type="text" id="ms_client_id" name="ms_client_id" value="{{ config.ms_client_id or '' }}">
 
-        <label for="ms_client_secret">Client secret</label>
+        <label for="ms_client_secret">Client secret (optionnel)</label>
         <input type="password" id="ms_client_secret" name="ms_client_secret" value="{{ config.ms_client_secret or '' }}">
 
-        <p class="muted">Scope utilisé: <code>https://outlook.office365.com/.default</code>. L'application Azure doit disposer des permissions IMAP/SMTP adaptées.</p>
+        <p class="muted">Cliquez sur le bouton ci-dessous pour ouvrir la connexion Microsoft 365 et valider les autorisations une fois pour toutes.</p>
+        <p class="muted">Statut :
+            {% if microsoft_connected %}
+                <span class="oauth-connected">Connecté à Microsoft 365 ✅</span>
+            {% else %}
+                <span class="oauth-disconnected">Aucun compte connecté</span>
+            {% endif %}
+        </p>
+        <button type="submit" formaction="{{ url_for('main.microsoft_connect') }}" formmethod="post" class="button secondary oauth-button">
+            Se connecter avec Microsoft 365
+        </button>
+
+        <p class="muted">Scopes utilisateur : <code>IMAP.AccessAsUser.All</code>, <code>SMTP.Send</code>, <code>offline_access</code>. Si vous préférez une connexion application (client secret), le scope <code>https://outlook.office365.com/.default</code> reste supporté.</p>
     </div>
     <div>
         <h3>Rapports</h3>

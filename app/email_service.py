@@ -9,7 +9,7 @@ import smtplib
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.header import decode_header
 from email.message import EmailMessage
 from typing import List
@@ -33,30 +33,31 @@ DEFAULT_WINDOW_END_HOUR = 9
 
 
 MICROSOFT_SCOPE = "https://outlook.office365.com/.default"
+MICROSOFT_USER_SCOPE = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send"
 
 
 def is_microsoft_oauth_enabled(config: EmailConfig) -> bool:
     return (config.auth_mode or "password") == "microsoft_oauth2"
 
 
-def get_microsoft_access_token(config: EmailConfig) -> str:
-    if not config.ms_tenant_id or not config.ms_client_id or not config.ms_client_secret:
+def _request_microsoft_token(config: EmailConfig, token_data: dict[str, str]) -> dict:
+    if not config.ms_tenant_id or not config.ms_client_id:
         raise ValueError("Configuration OAuth Microsoft incomplète.")
 
+    payload = {
+        "client_id": config.ms_client_id,
+        **token_data,
+    }
+    if config.ms_client_secret:
+        payload["client_secret"] = config.ms_client_secret
+
     token_url = f"https://login.microsoftonline.com/{config.ms_tenant_id}/oauth2/v2.0/token"
-    payload = urllib.parse.urlencode(
-        {
-            "grant_type": "client_credentials",
-            "client_id": config.ms_client_id,
-            "client_secret": config.ms_client_secret,
-            "scope": MICROSOFT_SCOPE,
-        }
-    ).encode("utf-8")
-    request = urllib.request.Request(token_url, data=payload, method="POST")
-    request.add_header("Content-Type", "application/x-www-form-urlencoded")
+    encoded_payload = urllib.parse.urlencode(payload).encode("utf-8")
+    token_request = urllib.request.Request(token_url, data=encoded_payload, method="POST")
+    token_request.add_header("Content-Type", "application/x-www-form-urlencoded")
 
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with urllib.request.urlopen(token_request, timeout=15) as response:
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="ignore")
@@ -65,10 +66,62 @@ def get_microsoft_access_token(config: EmailConfig) -> str:
         raise ValueError(f"Impossible de joindre Microsoft Identity: {exc.reason}") from exc
 
     data = json.loads(body)
-    token = data.get("access_token")
-    if not token:
+    if not data.get("access_token"):
         raise ValueError("Réponse Microsoft sans access_token.")
-    return token
+    return data
+
+
+def _store_oauth_token(config: EmailConfig, token_response: dict) -> None:
+    config.ms_access_token = token_response.get("access_token")
+    refresh_token = token_response.get("refresh_token")
+    if refresh_token:
+        config.ms_refresh_token = refresh_token
+    expires_in = int(token_response.get("expires_in") or 3600)
+    config.ms_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in - 120)
+    db.session.commit()
+
+
+def _get_delegated_token(config: EmailConfig) -> str | None:
+    if config.ms_access_token and config.ms_token_expires_at:
+        expires_at = config.ms_token_expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at > datetime.now(timezone.utc):
+            return config.ms_access_token
+
+    if config.ms_refresh_token:
+        token_data = _request_microsoft_token(
+            config,
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": config.ms_refresh_token,
+                "scope": MICROSOFT_USER_SCOPE,
+            },
+        )
+        _store_oauth_token(config, token_data)
+        return config.ms_access_token
+
+    return None
+
+
+def get_microsoft_access_token(config: EmailConfig) -> str:
+    delegated_token = _get_delegated_token(config)
+    if delegated_token:
+        return delegated_token
+
+    if not config.ms_client_secret:
+        raise ValueError(
+            "Aucun token utilisateur Microsoft disponible. Cliquez sur « Se connecter avec Microsoft 365 » dans les paramètres."
+        )
+
+    token_data = _request_microsoft_token(
+        config,
+        {
+            "grant_type": "client_credentials",
+            "scope": MICROSOFT_SCOPE,
+        },
+    )
+    return token_data["access_token"]
 
 
 def build_xoauth2_payload(username: str, access_token: str) -> str:

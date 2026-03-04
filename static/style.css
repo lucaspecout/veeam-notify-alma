@@ -337,3 +337,18 @@ footer {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+
+
+.oauth-button {
+    margin-top: 0.5rem;
+}
+
+.oauth-connected {
+    color: var(--success);
+    font-weight: 700;
+}
+
+.oauth-disconnected {
+    color: var(--danger);
+    font-weight: 700;
+}
