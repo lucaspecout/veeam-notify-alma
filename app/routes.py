@@ -361,15 +361,8 @@ def microsoft_test_read_latest_email():
         flash(message, "success")
     except Exception as exc:  # noqa: BLE001
         message = f"Échec lecture du dernier e-mail : {exc}"
-        hint = ""
-        if "AUTHENTICATE failed" in str(exc):
-            hint = (
-                " Vérifiez dans Microsoft 365: IMAP activé sur la boîte, "
-                "permission OAuth déléguée IMAP.AccessAsUser.All, consentement admin accordé, "
-                "et que l'email IMAP configuré correspond au compte connecté."
-            )
-        add_log(message + hint, level="error")
-        flash(message + hint, "error")
+        add_log(message, level="error")
+        flash(message, "error")
     finally:
         if mail:
             try:
