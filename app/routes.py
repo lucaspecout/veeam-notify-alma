@@ -40,6 +40,20 @@ from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSIN
 bp = Blueprint("main", __name__)
 
 
+def _request_debug_context() -> str:
+    remote_addr = request.headers.get("X-Forwarded-For", request.remote_addr or "inconnue")
+    user_agent = request.user_agent.string or "inconnu"
+    return f"ip={remote_addr} ua='{user_agent[:120]}'"
+
+
+def _safe_identity(value: str | None) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return "<vide>"
+    if len(cleaned) <= 3:
+        return "***"
+    return f"{cleaned[:2]}***{cleaned[-1]}"
+
 
 def login_required(view):
     @wraps(view)
@@ -62,13 +76,27 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        add_log(
+            "Tentative de connexion application "
+            f"username={_safe_identity(username)} {_request_debug_context()}",
+            level="warning",
+        )
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             session["user_id"] = user.id
             flash("Connexion réussie.", "success")
             next_page = request.args.get("next") or url_for("main.index")
-            add_log(f"Utilisateur {username} connecté.")
+            add_log(
+                f"Utilisateur {username} connecté. Redirection vers '{next_page}'. "
+                f"{_request_debug_context()}"
+            )
             return redirect(next_page)
+        add_log(
+            "Échec de connexion application "
+            f"username={_safe_identity(username)} raison='identifiants invalides' "
+            f"{_request_debug_context()}",
+            level="error",
+        )
         flash("Identifiants invalides.", "error")
     return render_template("login.html")
 
@@ -232,8 +260,19 @@ def import_clients():
 @login_required
 def microsoft_connect():
     config = EmailConfig.get_singleton()
+    add_log(
+        "Démarrage connexion Microsoft 365 "
+        f"tenant={_safe_identity(config.ms_tenant_id)} "
+        f"client_id={_safe_identity(config.ms_client_id)} "
+        f"user={g.user.username if g.user else 'inconnu'}"
+    )
     if not config.ms_tenant_id or not config.ms_client_id:
         flash("Renseignez Tenant ID et Client ID avant de vous connecter à Microsoft 365.", "error")
+        add_log(
+            "Connexion Microsoft refusée: configuration manquante "
+            f"tenant={bool(config.ms_tenant_id)} client_id={bool(config.ms_client_id)}",
+            level="error",
+        )
         return redirect(url_for("main.settings"))
 
     redirect_uri = url_for("main.microsoft_callback", _external=True, _scheme="https")
@@ -261,22 +300,36 @@ def microsoft_callback():
     config = EmailConfig.get_singleton()
     expected_state = session.pop("ms_oauth_state", None)
     received_state = request.args.get("state")
+    add_log(
+        "Callback Microsoft reçu "
+        f"user={g.user.username if g.user else 'inconnu'} "
+        f"state_present={bool(received_state)} code_present={bool(request.args.get('code'))} "
+        f"error_present={bool(request.args.get('error'))}"
+    )
     if not expected_state or expected_state != received_state:
+        add_log(
+            "Connexion Microsoft refusée: état OAuth invalide "
+            f"expected_state_present={bool(expected_state)} received_state_present={bool(received_state)}",
+            level="error",
+        )
         flash("Connexion Microsoft refusée: état OAuth invalide.", "error")
         return redirect(url_for("main.settings"))
 
     error = request.args.get("error")
     if error:
         description = request.args.get("error_description", error)
+        add_log(f"Connexion Microsoft annulée: {description}", level="error")
         flash(f"Connexion Microsoft annulée: {description}", "error")
         return redirect(url_for("main.settings"))
 
     code = request.args.get("code")
     if not code:
+        add_log("Connexion Microsoft échouée: code d'autorisation manquant.", level="error")
         flash("Connexion Microsoft échouée: code d'autorisation manquant.", "error")
         return redirect(url_for("main.settings"))
 
     try:
+        add_log("Échange du code OAuth Microsoft contre un token en cours.")
         token_data = _request_microsoft_token(
             config,
             {
@@ -435,11 +488,19 @@ def test_imap_connection():
 
     mail = None
     try:
+        add_log(
+            "Test IMAP démarré "
+            f"host={config.imap_host or '<vide>'} port={config.imap_port} "
+            f"use_ssl={config.use_ssl} auth_mode={config.auth_mode or 'password'} "
+            f"user={g.user.username if g.user else 'inconnu'}"
+        )
         if config.use_ssl:
             mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port, timeout=10)
         else:
             mail = imaplib.IMAP4(config.imap_host, config.imap_port, timeout=10)
+        add_log("Connexion socket IMAP établie, tentative d'authentification en cours.")
         imap_authenticate(mail, config)
+        add_log("Authentification IMAP réussie, ouverture INBOX.")
         mail.select("INBOX")
         message = "Test IMAP réussi."
         add_log(f"{message} par {g.user.username}.")
@@ -481,6 +542,12 @@ def test_smtp_connection():
 
     server = None
     try:
+        add_log(
+            "Test SMTP démarré "
+            f"host={config.smtp_host or '<vide>'} port={config.smtp_port} "
+            f"use_ssl={config.use_ssl} auth_mode={config.auth_mode or 'password'} "
+            f"user={g.user.username if g.user else 'inconnu'}"
+        )
         use_ssl_direct = config.use_ssl and config.smtp_port == 465
         if use_ssl_direct:
             server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=10)
@@ -490,7 +557,9 @@ def test_smtp_connection():
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
+        add_log("Connexion SMTP établie, tentative d'authentification en cours.")
         smtp_authenticate(server, config)
+        add_log("Authentification SMTP réussie, envoi commande NOOP.")
         server.noop()
         message = "Test SMTP réussi."
         add_log(f"{message} par {g.user.username}.")
