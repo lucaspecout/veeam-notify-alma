@@ -238,6 +238,16 @@ input {
     border: 1px solid #d1d5db;
 }
 
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.checkbox-row input {
+    width: auto;
+}
+
 .form-actions {
     margin-top: 1rem;
     display: flex;
