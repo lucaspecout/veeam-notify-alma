@@ -210,6 +210,49 @@ def smtp_authenticate(server: smtplib.SMTP, config: EmailConfig) -> None:
     server.login(config.smtp_username, config.smtp_password)
 
 
+def format_smtp_auth_error(config: EmailConfig, exc: Exception) -> str:
+    """Build a human-friendly authentication error for SMTP failures."""
+    raw_error = str(exc)
+    response_text = ""
+    smtp_code = ""
+
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        smtp_code = str(exc.smtp_code)
+        try:
+            response_text = exc.smtp_error.decode("utf-8", errors="ignore")
+        except AttributeError:
+            response_text = str(exc.smtp_error)
+
+    lowered = f"{raw_error} {response_text}".lower()
+    is_auth_error = (
+        isinstance(exc, smtplib.SMTPAuthenticationError)
+        or "5.7.3" in lowered
+        or "authentication unsuccessful" in lowered
+        or smtp_code == "535"
+    )
+
+    if not is_auth_error:
+        return raw_error
+
+    if is_microsoft_oauth_enabled(config):
+        token_info = get_microsoft_token_diagnostics(config)
+        identity = token_info.get("identity") or "inconnue"
+        smtp_user = config.smtp_username or "<vide>"
+        return (
+            "Authentification SMTP Microsoft refusée (535/5.7.3). "
+            "Vérifiez que la boîte SMTP est autorisée pour SMTP AUTH et que l'adresse "
+            f"SMTP configurée ({smtp_user}) correspond au compte Microsoft connecté ({identity}). "
+            "Si besoin, cliquez sur « Se déconnecter », reconnectez le compte Microsoft 365, "
+            "puis relancez le test SMTP."
+        )
+
+    return (
+        "Authentification SMTP refusée (535/5.7.3). "
+        "Vérifiez l'adresse SMTP, le mot de passe ou mot de passe d'application, "
+        "et que SMTP AUTH est activé sur la boîte."
+    )
+
+
 def _sanitize_hour(value: int | None, default: int) -> int:
     try:
         hour = int(value)
@@ -585,7 +628,8 @@ def send_status_report(app=None) -> tuple[bool, str]:
             add_log(f"Rapport envoyé à {len(recipients)} destinataire(s).")
             return True, "Rapport envoyé avec succès."
         except Exception as exc:  # noqa: BLE001
-            message = f"Échec de l'envoi du rapport : {exc}"
+            error_detail = format_smtp_auth_error(config, exc)
+            message = f"Échec de l'envoi du rapport : {error_detail}"
             add_log(message, level="error")
             return False, message
         finally:
