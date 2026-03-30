@@ -22,6 +22,7 @@ from flask import (
 from . import db
 from .email_service import (
     decode_subject,
+    format_smtp_auth_error,
     format_window_label,
     get_microsoft_access_token,
     get_microsoft_token_diagnostics,
@@ -567,7 +568,8 @@ def test_smtp_connection():
             return jsonify({"success": True, "message": message})
         flash(message, "success")
     except Exception as exc:  # noqa: BLE001
-        message = f"Test SMTP échoué : {exc}"
+        error_detail = format_smtp_auth_error(config, exc)
+        message = f"Test SMTP échoué : {error_detail}"
         add_log(message, level="error")
         if request.accept_mimetypes.accept_json:
             return jsonify({"success": False, "message": message}), 500
