@@ -452,6 +452,15 @@ def settings():
             except ValueError:
                 return default
 
+        def _parse_bounded_int(
+            value: str | None, default: int, minimum: int, maximum: int
+        ) -> int:
+            try:
+                parsed = int((value or "").strip() or default)
+            except ValueError:
+                return default
+            return min(max(parsed, minimum), maximum)
+
         config.auth_mode = "microsoft_oauth2"
         config.ms_tenant_id = request.form.get("ms_tenant_id") or None
         config.ms_client_id = request.form.get("ms_client_id") or None
@@ -463,6 +472,19 @@ def settings():
         config.smtp_port = _parse_port(request.form.get("smtp_port"), 587)
         config.smtp_username = (request.form.get("smtp_username") or "").strip() or None
         config.use_ssl = request.form.get("use_ssl") == "on"
+        config.report_recipients = (request.form.get("report_recipients") or "").strip() or None
+        config.check_schedule_hour = _parse_bounded_int(
+            request.form.get("check_schedule_hour"), 9, 0, 23
+        )
+        config.check_schedule_minute = _parse_bounded_int(
+            request.form.get("check_schedule_minute"), 0, 0, 59
+        )
+        config.report_schedule_hour = _parse_bounded_int(
+            request.form.get("report_schedule_hour"), 9, 0, 23
+        )
+        config.report_schedule_minute = _parse_bounded_int(
+            request.form.get("report_schedule_minute"), 30, 0, 59
+        )
         db.session.commit()
         add_log(f"Configuration Microsoft OAuth + boîtes IMAP/SMTP mise à jour par {g.user.username}.")
         flash("Configuration Microsoft 365 et boîtes IMAP/SMTP mise à jour.", "success")
