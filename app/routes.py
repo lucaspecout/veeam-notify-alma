@@ -392,13 +392,26 @@ def microsoft_disconnect():
 def settings():
     config = EmailConfig.get_singleton()
     if request.method == "POST":
+        def _parse_port(value: str | None, default: int) -> int:
+            try:
+                return int((value or "").strip() or default)
+            except ValueError:
+                return default
+
         config.auth_mode = "microsoft_oauth2"
         config.ms_tenant_id = request.form.get("ms_tenant_id") or None
         config.ms_client_id = request.form.get("ms_client_id") or None
         config.ms_client_secret = request.form.get("ms_client_secret") or None
+        config.imap_host = (request.form.get("imap_host") or "").strip() or None
+        config.imap_port = _parse_port(request.form.get("imap_port"), 993)
+        config.imap_username = (request.form.get("imap_username") or "").strip() or None
+        config.smtp_host = (request.form.get("smtp_host") or "").strip() or None
+        config.smtp_port = _parse_port(request.form.get("smtp_port"), 587)
+        config.smtp_username = (request.form.get("smtp_username") or "").strip() or None
+        config.use_ssl = request.form.get("use_ssl") == "on"
         db.session.commit()
-        add_log(f"Configuration Microsoft OAuth mise à jour par {g.user.username}.")
-        flash("Configuration Microsoft 365 mise à jour.", "success")
+        add_log(f"Configuration Microsoft OAuth + boîtes IMAP/SMTP mise à jour par {g.user.username}.")
+        flash("Configuration Microsoft 365 et boîtes IMAP/SMTP mise à jour.", "success")
         return redirect(url_for("main.settings"))
     return render_template(
         "settings.html",

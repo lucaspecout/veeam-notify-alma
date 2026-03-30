@@ -34,6 +34,35 @@
         <p class="muted">Scopes : <code>IMAP.AccessAsUser.All</code>, <code>SMTP.Send</code>, <code>offline_access</code>.</p>
     </div>
 
+    <div>
+        <label for="imap_host">Serveur IMAP</label>
+        <input type="text" id="imap_host" name="imap_host" value="{{ config.imap_host or 'outlook.office365.com' }}" required>
+
+        <label for="imap_port">Port IMAP</label>
+        <input type="number" id="imap_port" name="imap_port" min="1" max="65535" value="{{ config.imap_port or 993 }}" required>
+
+        <label for="imap_username">Boîte de réception (adresse e-mail)</label>
+        <input type="email" id="imap_username" name="imap_username" value="{{ config.imap_username or '' }}" placeholder="mailbox@votredomaine.com" required>
+    </div>
+
+    <div>
+        <label for="smtp_host">Serveur SMTP</label>
+        <input type="text" id="smtp_host" name="smtp_host" value="{{ config.smtp_host or 'smtp.office365.com' }}" required>
+
+        <label for="smtp_port">Port SMTP</label>
+        <input type="number" id="smtp_port" name="smtp_port" min="1" max="65535" value="{{ config.smtp_port or 587 }}" required>
+
+        <label for="smtp_username">Boîte d'envoi (adresse e-mail)</label>
+        <input type="email" id="smtp_username" name="smtp_username" value="{{ config.smtp_username or '' }}" placeholder="mailbox@votredomaine.com" required>
+
+        <label class="checkbox-row" for="use_ssl">
+            <input type="checkbox" id="use_ssl" name="use_ssl" {% if config.use_ssl %}checked{% endif %}>
+            Utiliser TLS/SSL
+        </label>
+
+        <p class="muted">Microsoft 365 sert uniquement à l'authentification OAuth. Les adresses IMAP/SMTP ci-dessus déterminent la boîte utilisée pour recevoir et envoyer.</p>
+    </div>
+
     <div class="form-actions full-width">
         <button type="submit" class="button">Enregistrer</button>
         <button type="submit" formaction="{{ url_for('main.microsoft_connect') }}" formmethod="post" class="button secondary oauth-button">
