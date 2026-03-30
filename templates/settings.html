@@ -63,6 +63,30 @@
         <p class="muted">Microsoft 365 sert uniquement à l'authentification OAuth. Les adresses IMAP/SMTP ci-dessus déterminent la boîte utilisée pour recevoir et envoyer.</p>
     </div>
 
+    <div class="full-width">
+        <h3>Rapport automatique</h3>
+    </div>
+
+    <div>
+        <label for="report_recipients">E-mail de destination du rapport</label>
+        <input type="email" id="report_recipients" name="report_recipients" value="{{ config.report_recipients or '' }}" placeholder="destinataire@domaine.com">
+        <p class="muted">Adresse qui recevra le rapport quotidien.</p>
+    </div>
+
+    <div>
+        <label for="check_schedule_hour">Heure de vérification</label>
+        <input type="number" id="check_schedule_hour" name="check_schedule_hour" min="0" max="23" value="{{ config.check_schedule_hour if config.check_schedule_hour is not none else 9 }}" required>
+
+        <label for="check_schedule_minute">Minute de vérification</label>
+        <input type="number" id="check_schedule_minute" name="check_schedule_minute" min="0" max="59" value="{{ config.check_schedule_minute if config.check_schedule_minute is not none else 0 }}" required>
+
+        <label for="report_schedule_hour">Heure d'envoi du rapport</label>
+        <input type="number" id="report_schedule_hour" name="report_schedule_hour" min="0" max="23" value="{{ config.report_schedule_hour if config.report_schedule_hour is not none else 9 }}" required>
+
+        <label for="report_schedule_minute">Minute d'envoi du rapport</label>
+        <input type="number" id="report_schedule_minute" name="report_schedule_minute" min="0" max="59" value="{{ config.report_schedule_minute if config.report_schedule_minute is not none else 30 }}" required>
+    </div>
+
     <div class="form-actions full-width">
         <button type="submit" class="button">Enregistrer</button>
         <button type="submit" formaction="{{ url_for('main.microsoft_connect') }}" formmethod="post" class="button secondary oauth-button">
