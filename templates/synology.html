@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="eyebrow">NAS Synology</p>
+        <h2>Suivi Hyper Backup</h2>
+        <p class="muted">Gardez un œil sur les dernières notifications Hyper Backup reçues pour chaque NAS.</p>
+    </div>
+    <div class="actions">
+        <a class="button" href="{{ url_for('main.new_synology') }}">Nouveau NAS</a>
+        <a class="button secondary" href="{{ url_for('main.export_synology') }}">Exporter les NAS</a>
+        <form action="{{ url_for('main.run_synology_check') }}" method="post" class="inline-form">
+            <button type="submit" class="button secondary">Lancer une vérification maintenant</button>
+        </form>
+        <form action="{{ url_for('main.send_synology_report') }}" method="post" class="inline-form">
+            <button type="submit" class="button secondary">Envoyer un rapport par e-mail</button>
+        </form>
+    </div>
+</div>
+
+<div class="card table-card">
+    <div class="table-header">
+        <div>
+            <h3>NAS suivis</h3>
+            <p class="muted">Les objets Hyper Backup sont recherchés dans la même boîte IMAP que Veeam.</p>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+            <tr>
+                <th>NAS</th>
+                <th>Statut</th>
+                <th>Statuts reçus ({{ window_label }})</th>
+                <th>Nb mails</th>
+                <th>Dernier sujet reçu</th>
+                <th>Dernière vérification</th>
+                <th>Notes</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for client in clients %}
+                <tr>
+                    <td class="client-cell">
+                        <div class="client-name">{{ client.name }}</div>
+                    </td>
+                    <td><span class="badge status-{{ client.last_status | lower | replace(' ', '-') }}">{{ client.last_status }}</span></td>
+                    <td>{{ client.last_statuses or '—' }}</td>
+                    <td><strong>{{ client.last_email_count or 0 }}</strong></td>
+                    <td class="monospace">{{ client.last_subject or '—' }}</td>
+                    <td>{% if client.last_checked_at %}{{ client.last_checked_at.strftime('%d/%m/%Y %H:%M') }}{% else %}Jamais{% endif %}</td>
+                    <td>{{ client.last_note or '—' }}</td>
+                    <td class="row-actions">
+                        <a href="{{ url_for('main.edit_synology', client_id=client.id) }}">Modifier</a>
+                        <form action="{{ url_for('main.delete_synology', client_id=client.id) }}" method="post" class="inline-form" onsubmit="return confirm('Supprimer ce NAS ?');">
+                            <button type="submit" class="link">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="8" class="empty">Ajoutez votre premier NAS pour démarrer le suivi Hyper Backup.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Import de NAS</h3>
+    <p class="muted">Importez un fichier CSV (colonnes : name, expected_subject_ok, expected_subject_warning, expected_subject_failed). Les NAS déjà présents sont ignorés.</p>
+    <form action="{{ url_for('main.import_synology') }}" method="post" enctype="multipart/form-data" class="inline-form">
+        <input type="file" name="file" accept=".csv" required>
+        <button type="submit" class="button">Importer</button>
+    </form>
+</div>
+{% endblock %}

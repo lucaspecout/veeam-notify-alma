@@ -45,6 +45,14 @@ def ensure_client_subject_columns(engine: Engine) -> None:
                 text("ALTER TABLE client ADD COLUMN last_email_count INTEGER DEFAULT 0 NOT NULL")
             )
 
+        if "monitor_type" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE client "
+                    "ADD COLUMN monitor_type VARCHAR(32) DEFAULT 'veeam' NOT NULL"
+                )
+            )
+
         if columns_added:
             connection.execute(
                 text(

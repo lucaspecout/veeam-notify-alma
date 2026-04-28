@@ -9,6 +9,7 @@ from functools import wraps
 
 from flask import (
     Blueprint,
+    current_app,
     flash,
     g,
     jsonify,
@@ -35,10 +36,36 @@ from .email_service import (
     _store_oauth_token,
     _request_microsoft_token,
 )
-from .models import Client, EmailConfig, LogEntry, STATUS_CHOICES, STATUS_MISSING, User, add_log
+from .models import (
+    Client,
+    EmailConfig,
+    LogEntry,
+    MONITOR_TYPE_SYNOLOGY,
+    MONITOR_TYPE_VEEAM,
+    STATUS_CHOICES,
+    STATUS_MISSING,
+    User,
+    add_log,
+)
 
 
 bp = Blueprint("main", __name__)
+
+SYNOLOGY_DEFAULT_SUBJECTS = {
+    "ok": (
+        "Backup completed; Backup task completed; Hyper Backup completed; "
+        "Sauvegarde terminée; Tâche de sauvegarde terminée"
+    ),
+    "warning": (
+        "Backup canceled; Backup task canceled; Backup suspended; Backup partially completed; "
+        "Sauvegarde annulée; Sauvegarde suspendue; Sauvegarde partiellement terminée"
+    ),
+    "failed": (
+        "Backup failed; Backup task failed; Failed to run backup task; Failed to backup data; "
+        "Exception occurred while backing up data; Échec de la sauvegarde; "
+        "Échec de la tâche de sauvegarde; Impossible d'exécuter la tâche de sauvegarde"
+    ),
+}
 
 
 def _request_debug_context() -> str:
@@ -114,7 +141,7 @@ def logout():
 @bp.route("/")
 @login_required
 def index():
-    clients = Client.query.order_by(Client.name).all()
+    clients = Client.query.filter_by(monitor_type=MONITOR_TYPE_VEEAM).order_by(Client.name).all()
     config = EmailConfig.get_singleton()
     window_label = format_window_label(config)
     return render_template(
@@ -136,6 +163,7 @@ def new_client():
         else:
             client = Client(
                 name=name,
+                monitor_type=MONITOR_TYPE_VEEAM,
                 expected_subject=subject_ok,
                 expected_subject_ok=subject_ok,
                 expected_subject_warning=subject_warning,
@@ -153,7 +181,7 @@ def new_client():
 @bp.route("/clients/<int:client_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_client(client_id: int):
-    client = Client.query.get_or_404(client_id)
+    client = Client.query.filter_by(id=client_id, monitor_type=MONITOR_TYPE_VEEAM).first_or_404()
     if request.method == "POST":
         client.name = request.form.get("name", "").strip()
         subject_ok = request.form.get("expected_subject_ok", "").strip()
@@ -174,7 +202,7 @@ def edit_client(client_id: int):
 @bp.route("/clients/<int:client_id>/delete", methods=["POST"])
 @login_required
 def delete_client(client_id: int):
-    client = Client.query.get_or_404(client_id)
+    client = Client.query.filter_by(id=client_id, monitor_type=MONITOR_TYPE_VEEAM).first_or_404()
     db.session.delete(client)
     db.session.commit()
     add_log(f"Client '{client.name}' supprimé par {g.user.username}.")
@@ -193,7 +221,7 @@ def export_clients():
         "expected_subject_warning",
         "expected_subject_failed",
     ])
-    for client in Client.query.order_by(Client.name).all():
+    for client in Client.query.filter_by(monitor_type=MONITOR_TYPE_VEEAM).order_by(Client.name).all():
         writer.writerow([
             client.name,
             client.expected_subject_ok or "",
@@ -225,7 +253,10 @@ def import_clients():
         return redirect(url_for("main.index"))
 
     reader = csv.DictReader(stream)
-    existing_names = {client.name.lower() for client in Client.query.all()}
+    existing_names = {
+        client.name.lower()
+        for client in Client.query.filter_by(monitor_type=MONITOR_TYPE_VEEAM).all()
+    }
     created = 0
     skipped = 0
 
@@ -239,6 +270,7 @@ def import_clients():
 
         client = Client(
             name=name,
+            monitor_type=MONITOR_TYPE_VEEAM,
             expected_subject_ok=(row.get("expected_subject_ok") or "").strip(),
             expected_subject_warning=(row.get("expected_subject_warning") or "").strip(),
             expected_subject_failed=(row.get("expected_subject_failed") or "").strip(),
@@ -255,6 +287,173 @@ def import_clients():
     )
     flash(f"Import terminé : {created} ajouté(s), {skipped} ignoré(s).", "success")
     return redirect(url_for("main.index"))
+
+
+@bp.route("/synology")
+@login_required
+def synology_dashboard():
+    clients = Client.query.filter_by(monitor_type=MONITOR_TYPE_SYNOLOGY).order_by(Client.name).all()
+    config = EmailConfig.get_singleton()
+    window_label = format_window_label(config)
+    return render_template(
+        "synology.html",
+        clients=clients,
+        statuses=STATUS_CHOICES,
+        window_label=window_label,
+    )
+
+
+@bp.route("/synology/new", methods=["GET", "POST"])
+@login_required
+def new_synology():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        subject_ok = request.form.get("expected_subject_ok", "").strip()
+        subject_warning = request.form.get("expected_subject_warning", "").strip()
+        subject_failed = request.form.get("expected_subject_failed", "").strip()
+
+        if not name or not subject_ok or not subject_warning or not subject_failed:
+            flash("Merci de renseigner un nom de NAS et les trois objets attendus.", "error")
+        else:
+            client = Client(
+                name=name,
+                monitor_type=MONITOR_TYPE_SYNOLOGY,
+                expected_subject=subject_ok,
+                expected_subject_ok=subject_ok,
+                expected_subject_warning=subject_warning,
+                expected_subject_failed=subject_failed,
+                last_status=STATUS_MISSING,
+            )
+            db.session.add(client)
+            db.session.commit()
+            add_log(f"NAS Synology '{name}' créé par {g.user.username}.")
+            flash("NAS Synology créé avec succès.", "success")
+            return redirect(url_for("main.synology_dashboard"))
+    return render_template(
+        "synology_form.html",
+        client=None,
+        default_subjects=SYNOLOGY_DEFAULT_SUBJECTS,
+    )
+
+
+@bp.route("/synology/<int:client_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_synology(client_id: int):
+    client = Client.query.filter_by(id=client_id, monitor_type=MONITOR_TYPE_SYNOLOGY).first_or_404()
+    if request.method == "POST":
+        client.name = request.form.get("name", "").strip()
+        subject_ok = request.form.get("expected_subject_ok", "").strip()
+        subject_warning = request.form.get("expected_subject_warning", "").strip()
+        subject_failed = request.form.get("expected_subject_failed", "").strip()
+
+        client.expected_subject = subject_ok
+        client.expected_subject_ok = subject_ok
+        client.expected_subject_warning = subject_warning
+        client.expected_subject_failed = subject_failed
+        db.session.commit()
+        add_log(f"NAS Synology '{client.name}' mis à jour par {g.user.username}.")
+        flash("NAS Synology mis à jour.", "success")
+        return redirect(url_for("main.synology_dashboard"))
+    return render_template(
+        "synology_form.html",
+        client=client,
+        default_subjects=SYNOLOGY_DEFAULT_SUBJECTS,
+    )
+
+
+@bp.route("/synology/<int:client_id>/delete", methods=["POST"])
+@login_required
+def delete_synology(client_id: int):
+    client = Client.query.filter_by(id=client_id, monitor_type=MONITOR_TYPE_SYNOLOGY).first_or_404()
+    db.session.delete(client)
+    db.session.commit()
+    add_log(f"NAS Synology '{client.name}' supprimé par {g.user.username}.")
+    flash("NAS Synology supprimé.", "success")
+    return redirect(url_for("main.synology_dashboard"))
+
+
+@bp.route("/synology/export", methods=["GET"])
+@login_required
+def export_synology():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "name",
+        "expected_subject_ok",
+        "expected_subject_warning",
+        "expected_subject_failed",
+    ])
+    for client in Client.query.filter_by(monitor_type=MONITOR_TYPE_SYNOLOGY).order_by(Client.name).all():
+        writer.writerow([
+            client.name,
+            client.expected_subject_ok or "",
+            client.expected_subject_warning or "",
+            client.expected_subject_failed or "",
+        ])
+
+    response = current_app.response_class(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=synology_nas.csv"},
+    )
+    add_log(f"Export des NAS Synology effectué par {g.user.username}.")
+    return response
+
+
+@bp.route("/synology/import", methods=["POST"])
+@login_required
+def import_synology():
+    uploaded = request.files.get("file")
+    if not uploaded or uploaded.filename == "":
+        flash("Merci de sélectionner un fichier CSV.", "error")
+        return redirect(url_for("main.synology_dashboard"))
+
+    try:
+        stream = io.StringIO(uploaded.stream.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        flash("Impossible de lire le fichier fourni.", "error")
+        return redirect(url_for("main.synology_dashboard"))
+
+    reader = csv.DictReader(stream)
+    existing_names = {
+        client.name.lower()
+        for client in Client.query.filter_by(monitor_type=MONITOR_TYPE_SYNOLOGY).all()
+    }
+    created = 0
+    skipped = 0
+
+    for row in reader:
+        name = (row.get("name") or "").strip()
+        if not name:
+            continue
+        if name.lower() in existing_names:
+            skipped += 1
+            continue
+
+        subject_ok = (row.get("expected_subject_ok") or SYNOLOGY_DEFAULT_SUBJECTS["ok"]).strip()
+        client = Client(
+            name=name,
+            monitor_type=MONITOR_TYPE_SYNOLOGY,
+            expected_subject_ok=subject_ok,
+            expected_subject_warning=(
+                row.get("expected_subject_warning") or SYNOLOGY_DEFAULT_SUBJECTS["warning"]
+            ).strip(),
+            expected_subject_failed=(
+                row.get("expected_subject_failed") or SYNOLOGY_DEFAULT_SUBJECTS["failed"]
+            ).strip(),
+            expected_subject=subject_ok,
+            last_status=STATUS_MISSING,
+        )
+        db.session.add(client)
+        existing_names.add(name.lower())
+        created += 1
+
+    db.session.commit()
+    add_log(
+        f"Import de NAS Synology réalisé par {g.user.username}: {created} ajoutés, {skipped} ignorés."
+    )
+    flash(f"Import terminé : {created} ajouté(s), {skipped} ignoré(s).", "success")
+    return redirect(url_for("main.synology_dashboard"))
 
 
 @bp.route("/settings/microsoft/connect", methods=["POST"])
@@ -609,7 +808,7 @@ def test_smtp_connection():
 @bp.route("/run-check", methods=["POST"])
 @login_required
 def run_check():
-    run_email_checks()
+    run_email_checks(monitor_type=MONITOR_TYPE_VEEAM)
     flash("Vérification lancée.", "success")
     return redirect(url_for("main.index"))
 
@@ -620,6 +819,28 @@ def send_report():
     success, message = send_status_report()
     flash(message, "success" if success else "error")
     return redirect(url_for("main.index"))
+
+
+@bp.route("/synology/run-check", methods=["POST"])
+@login_required
+def run_synology_check():
+    run_email_checks(monitor_type=MONITOR_TYPE_SYNOLOGY)
+    flash("Vérification Synology lancée.", "success")
+    return redirect(url_for("main.synology_dashboard"))
+
+
+@bp.route("/synology/send-report", methods=["POST"])
+@login_required
+def send_synology_report():
+    success, message = send_status_report(
+        monitor_type=MONITOR_TYPE_SYNOLOGY,
+        report_title="Rapport de statut Synology Hyper Backup",
+        mail_subject_prefix="Rapport Synology Hyper Backup",
+        html_title="Rapport Synology Hyper Backup",
+        item_label="NAS",
+    )
+    flash(message, "success" if success else "error")
+    return redirect(url_for("main.synology_dashboard"))
 
 
 @bp.route("/password", methods=["GET", "POST"])

@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ 'Modifier' if client else 'Nouveau' }} NAS Synology</h2>
+<form method="post" class="card">
+    <label for="name">Nom du NAS</label>
+    <input type="text" id="name" name="name" value="{{ client.name if client else '' }}" required>
+
+    <label for="expected_subject_ok">Objets attendus pour le statut OK</label>
+    <p class="muted">Séparez plusieurs objets par un point-virgule. La recherche Synology accepte l'objet même s'il n'est pas au début du sujet.</p>
+    <input type="text" id="expected_subject_ok" name="expected_subject_ok" value="{{ client.subject_ok if client else default_subjects.ok }}" required>
+
+    <label for="expected_subject_warning">Objets attendus pour le statut Warning</label>
+    <input type="text" id="expected_subject_warning" name="expected_subject_warning" value="{{ client.subject_warning if client else default_subjects.warning }}" required>
+
+    <label for="expected_subject_failed">Objets attendus pour le statut Failed</label>
+    <input type="text" id="expected_subject_failed" name="expected_subject_failed" value="{{ client.subject_failed if client else default_subjects.failed }}" required>
+
+    <div class="form-actions">
+        <button type="submit" class="button">Enregistrer</button>
+        <a class="button secondary" href="{{ url_for('main.synology_dashboard') }}">Annuler</a>
+    </div>
+</form>
+{% endblock %}

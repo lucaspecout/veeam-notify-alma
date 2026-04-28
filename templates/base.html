@@ -13,6 +13,7 @@
         <nav>
             {% if g.user %}
                 <a href="{{ url_for('main.index') }}">Tableau de bord</a>
+                <a href="{{ url_for('main.synology_dashboard') }}">NAS Synology</a>
                 <a href="{{ url_for('main.settings') }}">Paramètres</a>
                 <a href="{{ url_for('main.logs') }}">Logs</a>
                 <span class="user-badge">Connecté en tant que {{ g.user.username }}</span>

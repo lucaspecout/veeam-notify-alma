@@ -12,6 +12,8 @@ STATUS_MISSING = "Non reçu"
 STATUS_FAILED = "Failed"
 STATUS_WARNING = "Warning"
 STATUS_CHOICES = [STATUS_OK, STATUS_MISSING, STATUS_FAILED, STATUS_WARNING]
+MONITOR_TYPE_VEEAM = "veeam"
+MONITOR_TYPE_SYNOLOGY = "synology"
 
 
 def current_time() -> datetime:
@@ -22,6 +24,7 @@ def current_time() -> datetime:
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(128), nullable=False)
+    monitor_type = db.Column(db.String(32), default=MONITOR_TYPE_VEEAM, nullable=False)
     expected_subject = db.Column(db.String(512), nullable=False)
     expected_subject_ok = db.Column(db.String(512))
     expected_subject_warning = db.Column(db.String(512))

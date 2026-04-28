@@ -22,6 +22,8 @@ from . import db
 from .models import (
     Client,
     EmailConfig,
+    MONITOR_TYPE_SYNOLOGY,
+    MONITOR_TYPE_VEEAM,
     STATUS_FAILED,
     STATUS_MISSING,
     STATUS_OK,
@@ -283,6 +285,14 @@ def decode_subject(raw_subject: str) -> str:
     return subject
 
 
+def _split_expected_patterns(raw_patterns: str) -> list[str]:
+    return [
+        pattern.strip().lower()
+        for pattern in re.split(r"[;\n|]+", raw_patterns or "")
+        if pattern.strip()
+    ]
+
+
 def extract_status_from_subject(subject: str, client: Client) -> str | None:
     subject_lower = subject.lower().strip()
     expected_pairs = [
@@ -292,9 +302,12 @@ def extract_status_from_subject(subject: str, client: Client) -> str | None:
     ]
 
     for status, expected in expected_pairs:
-        expected_lower = expected.lower().strip()
-        if expected_lower and subject_lower.startswith(expected_lower):
-            return status
+        for expected_lower in _split_expected_patterns(expected):
+            if (client.monitor_type or MONITOR_TYPE_VEEAM) == MONITOR_TYPE_SYNOLOGY:
+                if expected_lower in subject_lower:
+                    return status
+            elif subject_lower.startswith(expected_lower):
+                return status
 
     return None
 
@@ -363,10 +376,13 @@ def find_matching_subject(
     return matched_subject, note, matched_status, matched_statuses_summary, email_count
 
 
-def run_email_checks(app=None):
+def run_email_checks(app=None, monitor_type: str | None = None):
     app = app or current_app._get_current_object()
     with app.app_context():
-        clients = Client.query.all()
+        query = Client.query
+        if monitor_type:
+            query = query.filter_by(monitor_type=monitor_type)
+        clients = query.all()
         config = EmailConfig.get_singleton()
         tz = ZoneInfo(os.getenv("TZ", "Europe/Paris"))
         now = datetime.now(tz=tz)
@@ -432,7 +448,8 @@ def run_email_checks(app=None):
 
             mail.logout()
             db.session.commit()
-            add_log(f"Vérification des emails effectuée pour {len(clients)} clients.")
+            scope = f" ({monitor_type})" if monitor_type else ""
+            add_log(f"Vérification des emails effectuée pour {len(clients)} élément(s){scope}.")
         except Exception as exc:  # noqa: BLE001
             for client in clients:
                 client.last_status = STATUS_MISSING
@@ -442,8 +459,10 @@ def run_email_checks(app=None):
             add_log(f"Erreur lors de la vérification des emails: {exc}", level="error")
 
 
-def build_status_report(clients: list[Client], tz: ZoneInfo, window_label: str) -> str:
-    header = ["Rapport de statut Veeam", "======================", ""]
+def build_status_report(
+    clients: list[Client], tz: ZoneInfo, window_label: str, title: str = "Rapport de statut Veeam"
+) -> str:
+    header = [title, "=" * len(title), ""]
     lines = header
     now = datetime.now(tz=tz)
     lines.append(f"Généré le {now.strftime('%d/%m/%Y %H:%M')} ({tz})")
@@ -479,7 +498,12 @@ def _status_badge(status: str) -> tuple[str, str]:
 
 
 def build_status_report_html(
-    clients: list[Client], tz: ZoneInfo, window_label: str
+    clients: list[Client],
+    tz: ZoneInfo,
+    window_label: str,
+    title: str = "Rapport Veeam",
+    subtitle: str = "Statut des notifications",
+    item_label: str = "Client",
 ) -> str:
     now = datetime.now(tz=tz)
     header_date = now.strftime("%d/%m/%Y %H:%M")
@@ -535,20 +559,20 @@ def build_status_report_html(
     <body style=\"margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Helvetica,Arial,sans-serif;\">
         <div style=\"max-width:760px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(15,23,42,0.08);\"> 
             <div style=\"background:linear-gradient(120deg,#e5e7eb,#f8fafc);color:#0f172a;padding:18px 22px;\">
-                <div style=\"font-size:14px;opacity:0.9;letter-spacing:0.3px;\">Rapport Veeam</div>
-                <div style=\"font-size:22px;font-weight:700;margin-top:4px;\">Statut des notifications</div>
+                <div style=\"font-size:14px;opacity:0.9;letter-spacing:0.3px;\">{html.escape(title)}</div>
+                <div style=\"font-size:22px;font-weight:700;margin-top:4px;\">{html.escape(subtitle)}</div>
                 <div style=\"font-size:13px;opacity:0.85;margin-top:6px;\">Généré le {header_date} ({tz})</div>
             </div>
             <div style=\"padding:20px 22px 10px;\">
                 <p style=\"margin:0 0 12px;color:#1f2937;font-size:14px;line-height:1.6;\">
-                    Voici un récapitulatif des derniers statuts reçus pour vos clients.
+                    Voici un récapitulatif des derniers statuts reçus.
                 </p>
             </div>
             <div style=\"padding:0 22px 22px;\">
                 <table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;\">
                     <thead>
                         <tr style=\"background:#f9fafb;border-bottom:1px solid #e5e7eb;\">
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Client</th>
+                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">{html.escape(item_label)}</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statut</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statuts ({window_label})</th>
                             <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Mails reçus</th>
@@ -579,7 +603,14 @@ def parse_report_recipients(raw_recipients: str) -> list[str]:
     ]
 
 
-def send_status_report(app=None) -> tuple[bool, str]:
+def send_status_report(
+    app=None,
+    monitor_type: str = MONITOR_TYPE_VEEAM,
+    report_title: str = "Rapport de statut Veeam",
+    mail_subject_prefix: str = "Rapport Veeam",
+    html_title: str = "Rapport Veeam",
+    item_label: str = "Client",
+) -> tuple[bool, str]:
     app = app or current_app._get_current_object()
     with app.app_context():
         config = EmailConfig.get_singleton()
@@ -600,13 +631,20 @@ def send_status_report(app=None) -> tuple[bool, str]:
             add_log(message, level="error")
             return False, message
 
-        clients = Client.query.order_by(Client.name).all()
+        clients = Client.query.filter_by(monitor_type=monitor_type).order_by(Client.name).all()
         window_label = format_window_label(config)
-        body = build_status_report(clients, tz, window_label)
-        html_body = build_status_report_html(clients, tz, window_label)
+        body = build_status_report(clients, tz, window_label, report_title)
+        html_body = build_status_report_html(
+            clients,
+            tz,
+            window_label,
+            title=html_title,
+            subtitle="Statut des notifications",
+            item_label=item_label,
+        )
 
         msg = EmailMessage()
-        msg["Subject"] = f"Rapport Veeam - {datetime.now(tz=tz).strftime('%d/%m/%Y %H:%M')}"
+        msg["Subject"] = f"{mail_subject_prefix} - {datetime.now(tz=tz).strftime('%d/%m/%Y %H:%M')}"
         msg["From"] = config.smtp_username
         msg["To"] = ", ".join(recipients)
         msg.set_content(body)
