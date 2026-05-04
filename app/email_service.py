@@ -460,61 +460,60 @@ def run_email_checks(app=None, monitor_type: str | None = None):
 
 
 def build_status_report(
-    clients: list[Client], tz: ZoneInfo, window_label: str, title: str = "Rapport de statut Veeam"
+    clients: list[Client],
+    tz: ZoneInfo,
+    window_label: str,
+    title: str = "Rapport de statut Veeam",
+    extra_sections: list[tuple[str, str, list[Client]]] | None = None,
 ) -> str:
     header = [title, "=" * len(title), ""]
     lines = header
     now = datetime.now(tz=tz)
     lines.append(f"Généré le {now.strftime('%d/%m/%Y %H:%M')} ({tz})")
     lines.append("")
-    for client in clients:
-        checked_at = (
-            client.last_checked_at.strftime("%d/%m/%Y %H:%M")
-            if client.last_checked_at
-            else "Jamais vérifié"
-        )
-        lines.append(f"- {client.name}: {client.status_label()}")
-        lines.append(f"  Dernier sujet : {client.last_subject or '—'}")
-        lines.append(
-            f"  Statuts reçus ({window_label}) : "
-            f"{client.last_statuses or '—'} ({client.last_email_count or 0} mail(s))"
-        )
-        lines.append(f"  Dernière vérification : {checked_at}")
-        if client.last_note:
-            lines.append(f"  Note : {client.last_note}")
+
+    def add_client_lines(section_clients: list[Client]) -> None:
+        for client in section_clients:
+            checked_at = (
+                client.last_checked_at.strftime("%d/%m/%Y %H:%M")
+                if client.last_checked_at
+                else "Jamais vérifié"
+            )
+            lines.append(f"- {client.name}: {client.status_label()}")
+            lines.append(f"  Dernier sujet : {client.last_subject or '—'}")
+            lines.append(
+                f"  Statuts reçus ({window_label}) : "
+                f"{client.last_statuses or '—'} ({client.last_email_count or 0} mail(s))"
+            )
+            lines.append(f"  Dernière vérification : {checked_at}")
+            if client.last_note:
+                lines.append(f"  Note : {client.last_note}")
+            lines.append("")
+
+    add_client_lines(clients)
+
+    for section_title, _item_label, section_clients in extra_sections or []:
+        lines.append(section_title)
+        lines.append("=" * len(section_title))
         lines.append("")
+        add_client_lines(section_clients)
 
     return "\n".join(lines)
 
 
-def _status_badge(status: str) -> tuple[str, str]:
-    palette = {
-        STATUS_OK: ("#16a34a", "#e7f7ec"),
-        STATUS_WARNING: ("#f59e0b", "#fff7e6"),
-        STATUS_FAILED: ("#dc2626", "#fdecec"),
-        STATUS_MISSING: ("#6b7280", "#f3f4f6"),
-    }
-    return palette.get(status, ("#0ea5e9", "#e0f2fe"))
-
-
-def build_status_report_html(
+def _build_status_table_html(
     clients: list[Client],
-    tz: ZoneInfo,
     window_label: str,
-    title: str = "Rapport Veeam",
-    subtitle: str = "Statut des notifications",
-    item_label: str = "Client",
+    item_label: str,
 ) -> str:
-    now = datetime.now(tz=tz)
-    header_date = now.strftime("%d/%m/%Y %H:%M")
     rows: list[str] = []
     for client in clients:
-        fg, bg = _status_badge(client.status_label())
         checked_at = (
             client.last_checked_at.strftime("%d/%m/%Y %H:%M")
             if client.last_checked_at
             else "Jamais vérifié"
         )
+        fg, bg = _status_badge(client.status_label())
         subject = client.last_subject or "—"
         note = client.last_note or "—"
         statuses = client.last_statuses or "—"
@@ -548,10 +547,61 @@ def build_status_report_html(
     table_body = "".join(rows) or """
         <tr>
             <td colspan="7" style="padding:16px;text-align:center;color:#6b7280;background:#f9fafb;">
-                Aucun client n'a été configuré pour le moment.
+                Aucun élément n'a été configuré pour le moment.
             </td>
         </tr>
     """
+
+    return f"""
+        <table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;\">
+            <thead>
+                <tr style=\"background:#f9fafb;border-bottom:1px solid #e5e7eb;\">
+                    <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">{html.escape(item_label)}</th>
+                    <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statut</th>
+                    <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statuts ({html.escape(window_label)})</th>
+                    <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Mails reçus</th>
+                    <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Dernier sujet</th>
+                    <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Vérifié le</th>
+                    <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {table_body}
+            </tbody>
+        </table>
+    """
+
+
+def _status_badge(status: str) -> tuple[str, str]:
+    palette = {
+        STATUS_OK: ("#16a34a", "#e7f7ec"),
+        STATUS_WARNING: ("#f59e0b", "#fff7e6"),
+        STATUS_FAILED: ("#dc2626", "#fdecec"),
+        STATUS_MISSING: ("#6b7280", "#f3f4f6"),
+    }
+    return palette.get(status, ("#0ea5e9", "#e0f2fe"))
+
+
+def build_status_report_html(
+    clients: list[Client],
+    tz: ZoneInfo,
+    window_label: str,
+    title: str = "Rapport Veeam",
+    subtitle: str = "Statut des notifications",
+    item_label: str = "Client",
+    extra_sections: list[tuple[str, str, list[Client]]] | None = None,
+) -> str:
+    now = datetime.now(tz=tz)
+    header_date = now.strftime("%d/%m/%Y %H:%M")
+    main_table = _build_status_table_html(clients, window_label, item_label)
+    extra_sections_html = ""
+    for section_title, section_item_label, section_clients in extra_sections or []:
+        extra_sections_html += f"""
+            <div style=\"padding:0 22px 10px;\">
+                <h2 style=\"margin:4px 0 12px;color:#111827;font-size:18px;\">{html.escape(section_title)}</h2>
+                {_build_status_table_html(section_clients, window_label, section_item_label)}
+            </div>
+        """
 
     return f"""
     <!doctype html>
@@ -569,23 +619,9 @@ def build_status_report_html(
                 </p>
             </div>
             <div style=\"padding:0 22px 22px;\">
-                <table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;\">
-                    <thead>
-                        <tr style=\"background:#f9fafb;border-bottom:1px solid #e5e7eb;\">
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">{html.escape(item_label)}</th>
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statut</th>
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Statuts ({window_label})</th>
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Mails reçus</th>
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Dernier sujet</th>
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Vérifié le</th>
-                            <th style=\"padding:12px 14px;text-align:left;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;\">Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {table_body}
-                    </tbody>
-                </table>
+                {main_table}
             </div>
+            {extra_sections_html}
             <div style=\"padding:14px 22px 20px;color:#6b7280;font-size:12px;border-top:1px solid #f3f4f6;background:#fbfbff;\">
                 Ce message est généré automatiquement par Veeam Notify. Merci de ne pas y répondre directement.
             </div>
@@ -610,6 +646,7 @@ def send_status_report(
     mail_subject_prefix: str = "Rapport Veeam",
     html_title: str = "Rapport Veeam",
     item_label: str = "Client",
+    include_synology_section: bool | None = None,
 ) -> tuple[bool, str]:
     app = app or current_app._get_current_object()
     with app.app_context():
@@ -632,8 +669,29 @@ def send_status_report(
             return False, message
 
         clients = Client.query.filter_by(monitor_type=monitor_type).order_by(Client.name).all()
+        if include_synology_section is None:
+            include_synology_section = monitor_type == MONITOR_TYPE_VEEAM
+
+        extra_sections: list[tuple[str, str, list[Client]]] = []
+        if include_synology_section:
+            synology_clients = (
+                Client.query.filter_by(monitor_type=MONITOR_TYPE_SYNOLOGY)
+                .order_by(Client.name)
+                .all()
+            )
+            if synology_clients:
+                extra_sections.append(
+                    ("Rapport Synology Hyper Backup", "NAS", synology_clients)
+                )
+
         window_label = format_window_label(config)
-        body = build_status_report(clients, tz, window_label, report_title)
+        body = build_status_report(
+            clients,
+            tz,
+            window_label,
+            report_title,
+            extra_sections=extra_sections,
+        )
         html_body = build_status_report_html(
             clients,
             tz,
@@ -641,6 +699,7 @@ def send_status_report(
             title=html_title,
             subtitle="Statut des notifications",
             item_label=item_label,
+            extra_sections=extra_sections,
         )
 
         msg = EmailMessage()
