@@ -13,7 +13,6 @@ from binascii import Error as BinasciiError
 from datetime import datetime, timedelta, timezone
 from email.header import decode_header
 from email.message import EmailMessage
-from typing import List
 from zoneinfo import ZoneInfo
 
 from flask import current_app
@@ -369,34 +368,58 @@ def parse_email_date(date_header: str | None, tz: ZoneInfo) -> datetime | None:
     return parsed.astimezone(tz)
 
 
-def find_matching_subject(
-    message_ids: List[bytes],
-    client: Client,
+def _fetch_message_headers_in_window(
     mail: imaplib.IMAP4,
     start_time: datetime,
     end_time: datetime,
     tz: ZoneInfo,
+    message_ids: list[bytes],
+) -> tuple[list[tuple[str, datetime]], str | None]:
+    messages: list[tuple[str, datetime]] = []
+    note = None
+    for msg_id in reversed(message_ids):
+        status, msg_data = mail.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (DATE SUBJECT)])")
+        if status != "OK" or not msg_data:
+            note = "Impossible de récupérer le message." if not note else note
+            continue
+
+        raw_headers = next(
+            (
+                item[1]
+                for item in msg_data
+                if isinstance(item, tuple) and isinstance(item[1], bytes)
+            ),
+            None,
+        )
+        if not raw_headers:
+            note = "Impossible de lire les en-têtes du message." if not note else note
+            continue
+
+        message = email.message_from_bytes(raw_headers)
+        received_at = parse_email_date(message.get("Date"), tz)
+        if not received_at:
+            note = note or "Date du message introuvable."
+            continue
+        if received_at < start_time or received_at > end_time:
+            continue
+
+        subject = decode_subject(message.get("Subject", ""))
+        messages.append((subject, received_at))
+
+    return messages, note
+
+
+def find_matching_subject(
+    messages: list[tuple[str, datetime]],
+    client: Client,
+    note: str | None = None,
 ) -> tuple[str | None, str | None, str | None, str | None, int]:
     matched_subject = None
     matched_status = None
     matched_statuses_summary = None
     email_count = 0
-    note = None
     status_counts: dict[str, int] = {}
-    for msg_id in reversed(message_ids):
-        status, msg_data = mail.fetch(msg_id, "(RFC822)")
-        if status != "OK" or not msg_data:
-            note = "Impossible de récupérer le message." if not note else note
-            continue
-        raw_email = msg_data[0][1]
-        message = email.message_from_bytes(raw_email)
-        received_at = parse_email_date(message.get("Date"), tz)
-        if not received_at:
-            note = note or "Date du message introuvable."
-            continue
-        if received_at and (received_at < start_time or received_at > end_time):
-            continue
-        subject = decode_subject(message.get("Subject", ""))
+    for subject, _received_at in messages:
         matched_status = extract_status_from_subject(subject, client)
         if matched_status:
             if matched_subject is None:
@@ -457,24 +480,24 @@ def run_email_checks(app=None, monitor_type: str | None = None):
                 raise RuntimeError("Impossible de parcourir la boîte mail.")
             message_ids = search_data[0].split()
 
-            for client in clients:
+            messages = []
+            fetch_note = None
+            for attempt in range(2):
                 try:
-                    (
-                        matched_subject,
-                        note,
-                        matched_status,
-                        matched_statuses,
-                        email_count,
-                    ) = find_matching_subject(message_ids, client, mail, start_time, end_time, tz)
+                    messages, fetch_note = _fetch_message_headers_in_window(
+                        mail, start_time, end_time, tz, message_ids
+                    )
+                    break
                 except Exception as exc:  # noqa: BLE001
                     if not (
-                        is_microsoft_oauth_enabled(config)
+                        attempt == 0
+                        and is_microsoft_oauth_enabled(config)
                         and _is_access_token_expired_error(exc)
                     ):
                         raise
 
                     add_log(
-                        "Session IMAP Microsoft expirée pendant la lecture. "
+                        "Session IMAP Microsoft expirée pendant la lecture initiale. "
                         "Rafraîchissement du token OAuth et reprise de la vérification.",
                         level="warning",
                     )
@@ -484,13 +507,15 @@ def run_email_checks(app=None, monitor_type: str | None = None):
                     if status != "OK":
                         raise RuntimeError("Impossible de reparcourir la boîte mail après reconnexion.")
                     message_ids = search_data[0].split()
-                    (
-                        matched_subject,
-                        note,
-                        matched_status,
-                        matched_statuses,
-                        email_count,
-                    ) = find_matching_subject(message_ids, client, mail, start_time, end_time, tz)
+
+            for client in clients:
+                (
+                    matched_subject,
+                    note,
+                    matched_status,
+                    matched_statuses,
+                    email_count,
+                ) = find_matching_subject(messages, client, fetch_note)
                 client.last_email_count = email_count
                 client.last_statuses = matched_statuses
                 if matched_subject:
