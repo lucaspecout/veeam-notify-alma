@@ -33,6 +33,7 @@ from .models import (
 
 DEFAULT_WINDOW_START_HOUR = 16
 DEFAULT_WINDOW_END_HOUR = 9
+OAUTH_EXPIRY_SAFETY_MARGIN_SECONDS = 600
 
 
 MICROSOFT_SCOPE = "https://outlook.office365.com/.default"
@@ -80,12 +81,13 @@ def _store_oauth_token(config: EmailConfig, token_response: dict) -> None:
     if refresh_token:
         config.ms_refresh_token = refresh_token
     expires_in = int(token_response.get("expires_in") or 3600)
-    config.ms_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in - 120)
+    valid_seconds = max(0, expires_in - OAUTH_EXPIRY_SAFETY_MARGIN_SECONDS)
+    config.ms_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=valid_seconds)
     db.session.commit()
 
 
-def _get_delegated_token(config: EmailConfig) -> str | None:
-    if config.ms_access_token and config.ms_token_expires_at:
+def _get_delegated_token(config: EmailConfig, force_refresh: bool = False) -> str | None:
+    if not force_refresh and config.ms_access_token and config.ms_token_expires_at:
         expires_at = config.ms_token_expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
@@ -165,8 +167,8 @@ def get_microsoft_token_diagnostics(config: EmailConfig) -> dict[str, str]:
         ),
     }
 
-def get_microsoft_access_token(config: EmailConfig) -> str:
-    delegated_token = _get_delegated_token(config)
+def get_microsoft_access_token(config: EmailConfig, force_refresh: bool = False) -> str:
+    delegated_token = _get_delegated_token(config, force_refresh=force_refresh)
     if delegated_token:
         return delegated_token
 
@@ -189,14 +191,55 @@ def build_xoauth2_payload(username: str, access_token: str) -> str:
     return f"user={username}\x01auth=Bearer {access_token}\x01\x01"
 
 
-def imap_authenticate(mail: imaplib.IMAP4, config: EmailConfig) -> None:
+def imap_authenticate(
+    mail: imaplib.IMAP4, config: EmailConfig, force_refresh: bool = False
+) -> None:
     if is_microsoft_oauth_enabled(config):
-        access_token = get_microsoft_access_token(config)
+        access_token = get_microsoft_access_token(config, force_refresh=force_refresh)
         payload = build_xoauth2_payload(config.imap_username or "", access_token)
         mail.authenticate("XOAUTH2", lambda _: payload)
         return
 
     mail.login(config.imap_username, config.imap_password)
+
+
+def _open_imap_mailbox(
+    config: EmailConfig, mailbox: str = "INBOX", force_token_refresh: bool = False
+) -> imaplib.IMAP4:
+    if config.use_ssl:
+        mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port)
+    else:
+        mail = imaplib.IMAP4(config.imap_host, config.imap_port)
+    try:
+        imap_authenticate(mail, config, force_refresh=force_token_refresh)
+    except Exception as exc:  # noqa: BLE001
+        if (
+            force_token_refresh
+            or not is_microsoft_oauth_enabled(config)
+            or not _is_access_token_expired_error(exc)
+        ):
+            _logout_imap(mail)
+            raise
+        _logout_imap(mail)
+        return _open_imap_mailbox(config, mailbox=mailbox, force_token_refresh=True)
+    status, _ = mail.select(mailbox)
+    if status != "OK":
+        raise RuntimeError(f"Impossible d'ouvrir la boîte {mailbox}.")
+    return mail
+
+
+def _logout_imap(mail: imaplib.IMAP4 | None) -> None:
+    if not mail:
+        return
+    try:
+        mail.logout()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _is_access_token_expired_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "accesstokenexpired" in text or "access token expired" in text
 
 
 def smtp_authenticate(server: smtplib.SMTP, config: EmailConfig) -> None:
@@ -405,13 +448,9 @@ def run_email_checks(app=None, monitor_type: str | None = None):
             add_log("Vérification impossible : configuration IMAP incomplète.", level="warning")
             return
 
+        mail = None
         try:
-            if config.use_ssl:
-                mail = imaplib.IMAP4_SSL(config.imap_host, config.imap_port)
-            else:
-                mail = imaplib.IMAP4(config.imap_host, config.imap_port)
-            imap_authenticate(mail, config)
-            mail.select("INBOX")
+            mail = _open_imap_mailbox(config)
             date_filter = start_time.strftime("%d-%b-%Y")
             status, search_data = mail.search(None, f'(SINCE "{date_filter}")')
             if status != "OK":
@@ -419,13 +458,39 @@ def run_email_checks(app=None, monitor_type: str | None = None):
             message_ids = search_data[0].split()
 
             for client in clients:
-                (
-                    matched_subject,
-                    note,
-                    matched_status,
-                    matched_statuses,
-                    email_count,
-                ) = find_matching_subject(message_ids, client, mail, start_time, end_time, tz)
+                try:
+                    (
+                        matched_subject,
+                        note,
+                        matched_status,
+                        matched_statuses,
+                        email_count,
+                    ) = find_matching_subject(message_ids, client, mail, start_time, end_time, tz)
+                except Exception as exc:  # noqa: BLE001
+                    if not (
+                        is_microsoft_oauth_enabled(config)
+                        and _is_access_token_expired_error(exc)
+                    ):
+                        raise
+
+                    add_log(
+                        "Session IMAP Microsoft expirée pendant la lecture. "
+                        "Rafraîchissement du token OAuth et reprise de la vérification.",
+                        level="warning",
+                    )
+                    _logout_imap(mail)
+                    mail = _open_imap_mailbox(config, force_token_refresh=True)
+                    status, search_data = mail.search(None, f'(SINCE "{date_filter}")')
+                    if status != "OK":
+                        raise RuntimeError("Impossible de reparcourir la boîte mail après reconnexion.")
+                    message_ids = search_data[0].split()
+                    (
+                        matched_subject,
+                        note,
+                        matched_status,
+                        matched_statuses,
+                        email_count,
+                    ) = find_matching_subject(message_ids, client, mail, start_time, end_time, tz)
                 client.last_email_count = email_count
                 client.last_statuses = matched_statuses
                 if matched_subject:
@@ -446,7 +511,6 @@ def run_email_checks(app=None, monitor_type: str | None = None):
                     )
                 client.last_checked_at = now
 
-            mail.logout()
             db.session.commit()
             scope = f" ({monitor_type})" if monitor_type else ""
             add_log(f"Vérification des emails effectuée pour {len(clients)} élément(s){scope}.")
@@ -457,6 +521,8 @@ def run_email_checks(app=None, monitor_type: str | None = None):
                 client.last_note = f"Erreur IMAP: {exc}"
             db.session.commit()
             add_log(f"Erreur lors de la vérification des emails: {exc}", level="error")
+        finally:
+            _logout_imap(mail)
 
 
 def build_status_report(
