@@ -5,6 +5,7 @@ import imaplib
 import io
 import smtplib
 import urllib.parse
+from datetime import datetime
 from functools import wraps
 
 from flask import (
@@ -51,6 +52,11 @@ from .models import (
 
 bp = Blueprint("main", __name__)
 
+MANUAL_CHECK_JOB_IDS = {
+    MONITOR_TYPE_VEEAM: "manual-email-check-veeam",
+    MONITOR_TYPE_SYNOLOGY: "manual-email-check-synology",
+}
+
 SYNOLOGY_DEFAULT_SUBJECTS = {
     "ok": (
         "Backup completed; Backup task completed; Hyper Backup completed; "
@@ -91,6 +97,31 @@ def login_required(view):
         return view(**kwargs)
 
     return wrapped_view
+
+
+def _run_manual_email_check(app, monitor_type: str, label: str) -> None:
+    with app.app_context():
+        add_log(f"Vérification manuelle {label} démarrée en arrière-plan.")
+    run_email_checks(app, monitor_type=monitor_type)
+
+
+def _schedule_manual_email_check(monitor_type: str, label: str) -> bool:
+    from .scheduler import scheduler
+
+    job_id = MANUAL_CHECK_JOB_IDS[monitor_type]
+    if scheduler.get_job(job_id):
+        return False
+
+    app = current_app._get_current_object()
+    scheduler.add_job(
+        lambda: _run_manual_email_check(app, monitor_type, label),
+        "date",
+        run_date=datetime.now(),
+        id=job_id,
+        replace_existing=False,
+        max_instances=1,
+    )
+    return True
 
 
 @bp.before_app_request
@@ -808,8 +839,10 @@ def test_smtp_connection():
 @bp.route("/run-check", methods=["POST"])
 @login_required
 def run_check():
-    run_email_checks(monitor_type=MONITOR_TYPE_VEEAM)
-    flash("Vérification lancée.", "success")
+    if _schedule_manual_email_check(MONITOR_TYPE_VEEAM, "Veeam"):
+        flash("Vérification Veeam lancée en arrière-plan.", "success")
+    else:
+        flash("Une vérification Veeam est déjà en attente.", "warning")
     return redirect(url_for("main.index"))
 
 
@@ -824,8 +857,10 @@ def send_report():
 @bp.route("/synology/run-check", methods=["POST"])
 @login_required
 def run_synology_check():
-    run_email_checks(monitor_type=MONITOR_TYPE_SYNOLOGY)
-    flash("Vérification Synology lancée.", "success")
+    if _schedule_manual_email_check(MONITOR_TYPE_SYNOLOGY, "Synology"):
+        flash("Vérification Synology lancée en arrière-plan.", "success")
+    else:
+        flash("Une vérification Synology est déjà en attente.", "warning")
     return redirect(url_for("main.synology_dashboard"))
 
 
