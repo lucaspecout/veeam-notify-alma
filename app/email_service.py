@@ -6,6 +6,8 @@ import json
 import os
 import re
 import smtplib
+import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +35,8 @@ from .models import (
 DEFAULT_WINDOW_START_HOUR = 16
 DEFAULT_WINDOW_END_HOUR = 9
 OAUTH_EXPIRY_SAFETY_MARGIN_SECONDS = 600
+MICROSOFT_TOKEN_REQUEST_ATTEMPTS = 3
+MICROSOFT_TOKEN_RETRY_DELAY_SECONDS = 1
 
 
 MICROSOFT_SCOPE = "https://outlook.office365.com/.default"
@@ -59,14 +63,26 @@ def _request_microsoft_token(config: EmailConfig, token_data: dict[str, str]) ->
     token_request = urllib.request.Request(token_url, data=encoded_payload, method="POST")
     token_request.add_header("Content-Type", "application/x-www-form-urlencoded")
 
-    try:
-        with urllib.request.urlopen(token_request, timeout=15) as response:
-            body = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="ignore")
-        raise ValueError(f"Token Microsoft refusé ({exc.code}): {details}") from exc
-    except urllib.error.URLError as exc:
-        raise ValueError(f"Impossible de joindre Microsoft Identity: {exc.reason}") from exc
+    for attempt in range(1, MICROSOFT_TOKEN_REQUEST_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(token_request, timeout=15) as response:
+                body = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="ignore")
+            raise ValueError(f"Token Microsoft refusé ({exc.code}): {details}") from exc
+        except urllib.error.URLError as exc:
+            is_dns_error = isinstance(exc.reason, socket.gaierror)
+            if is_dns_error and attempt < MICROSOFT_TOKEN_REQUEST_ATTEMPTS:
+                time.sleep(MICROSOFT_TOKEN_RETRY_DELAY_SECONDS * attempt)
+                continue
+            if is_dns_error:
+                raise ValueError(
+                    "Impossible de résoudre login.microsoftonline.com après "
+                    f"{MICROSOFT_TOKEN_REQUEST_ATTEMPTS} tentatives. "
+                    "Vérifiez la configuration DNS du conteneur Docker."
+                ) from exc
+            raise ValueError(f"Impossible de joindre Microsoft Identity: {exc.reason}") from exc
 
     data = json.loads(body)
     if not data.get("access_token"):

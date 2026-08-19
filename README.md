@@ -27,6 +27,20 @@ Variables utiles (avec valeurs par défaut si non fournies) :
 
 L'interface est disponible sur http://localhost:5000.
 
+### Dépannage de la connexion Microsoft 365
+
+L'erreur `Temporary failure in name resolution` indique que le conteneur ne parvient
+pas à résoudre `login.microsoftonline.com`. L'application réessaie automatiquement
+trois fois afin d'absorber les interruptions DNS brèves. Si l'erreur persiste :
+
+```bash
+docker compose exec app python -c "import socket; print(socket.getaddrinfo('login.microsoftonline.com', 443))"
+```
+
+Si cette commande échoue alors que la résolution fonctionne sur l'hôte, configurez
+les serveurs DNS du moteur Docker (ceux de votre réseau d'entreprise de préférence),
+puis recréez le conteneur avec `docker compose up -d --build --force-recreate`.
+
 ## Utilisation
 1. Rendez-vous dans "Paramètres" et choisissez le type d'authentification : mot de passe classique ou Microsoft OAuth2 (modern auth).
 2. Renseignez les informations IMAP (et SMTP optionnel), puis si OAuth2 est choisi : Tenant ID et Client ID Azure AD (Client Secret optionnel).
